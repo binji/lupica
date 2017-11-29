@@ -91,24 +91,19 @@ void write_binary_u16(uint16_t x) {
 }
 
 uint16_t g_invalid[] = {
-    0x0000, 0x0080, 0x00c0, 0x0100, 0x0101, 0x01c0, 0x0320, 0x04b0,
-    0x0540, 0x060c, 0x0668, 0x0892, 0x089a, 0x0900, 0x0908, 0x090c,
-    0x0932, 0x09d2, 0x0cf8, 0x0e00, 0x45d0, 0x8e58, 0xf1c0, 0xfa14,
-    0xfedc, 0xff0f, 0xff48, 0xffff,
-
-    0x0201, 0x0301, 0x0401, 0x0501, 0x0601, 0x0701, 0x0801, 0x089b,
-    0x08a0, 0x0901, 0x0a01, 0x0b01, 0x4444, 0xf6ec, 0xff88,
-
-    0x0e60, 0xf19c, 0x46c2,
-
-    0x4132, 0x4238, 0x4396,
-
-    0x0141,
 };
+
 size_t g_num_invalid = sizeof(g_invalid) / sizeof(g_invalid[0]);
 
 int is_known_invalid(uint16_t instr) {
   size_t j;
+  if (((instr & 0xf000) == 0xf000) ||
+      ((instr & 0xf000) == 0x0000) ||
+      ((instr & 0xf000) == 0x4000) ||
+      ((instr & 0xf000) == 0x8000)) {
+    return 1;
+  }
+
   for (j = 0; j < g_num_invalid; ++j) {
     if (g_invalid[j] == instr) {
       return 1;
@@ -130,12 +125,12 @@ void print_words(void) {
     if (g_words[i] == 1) {
       fprintf(stderr, "%04x ", i);
       if (((count + 1) % 8) == 0) {
-        printf("\n");
+        fprintf(stderr, "\n");
       }
       ++count;
     }
   }
-  printf("\n\n");
+  fprintf(stderr, "\n\n");
 }
 
 void print_op(const char* op) {
@@ -229,11 +224,29 @@ Result decode(uint16_t instr) {
   uint8_t top4 = instr >> 12;
   switch (top4) {
   case 0x0:
-    if (instr == 9) {
+    if (instr == 0x8) {
+      format_0(instr, "CLRT");
+      return Ok;
+    } else if (instr == 9) {
       format_0(instr, "NOP");
       return Ok;
     } else if (instr == 0xb) {
       format_0(instr, "RTS");
+      return Ok;
+    } else if (instr == 0x18) {
+      format_0(instr, "SETT");
+      return Ok;
+    } else if (instr == 0x19) {
+      format_0(instr, "DIV0U");
+      return Ok;
+    } else if (instr == 0x1b) {
+      format_0(instr, "SLEEP");
+      return Ok;
+    } else if (instr == 0x28) {
+      format_0(instr, "CLRMAC");
+      return Ok;
+    } else if (instr == 0x2b) {
+      format_0(instr, "RTE");
       return Ok;
     } else if ((instr & 0xf) == 4) {
       format_nm(instr, "MOV.B", "R%u,@(R0,R%u)");
@@ -244,14 +257,47 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 6) {
       format_nm(instr, "MOV.L", "R%u,@(R0,R%u)");
       return Ok;
+    } else if ((instr & 0xf) == 7) {
+      format_nm(instr, "MUL.L", "R%u,R%u");
+      return Ok;
     } else if ((instr & 0xf) == 0xc) {
-      format_nm(instr, "MOV.B", "@(R0,R%u), R%u");
+      format_nm(instr, "MOV.B", "@(R0,R%u),R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xd) {
+      format_nm(instr, "MOV.W", "@(R0,R%u),R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xe) {
+      format_nm(instr, "MOV.L", "@(R0,R%u),R%u");
       return Ok;
     } else if ((instr & 0xf) == 0xf) {
       format_nm(instr, "MAC.L", "@R%u+,@R%u+");
       return Ok;
-    } else if ((instr & 0xff) == 0x2) {
+    } else if ((instr & 0xff) == 0x02) {
       format_n(instr, "STC", "SR,R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x03) {
+      format_nm(instr, "BSRF", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x0a) {
+      format_n(instr, "STS", "MACH,R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x12) {
+      format_n(instr, "STC", "GBR, R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x1a) {
+      format_n(instr, "STS", "MACL, R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x22) {
+      format_n(instr, "STC", "VBR, R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x23) {
+      format_nm(instr, "BRAF", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x29) {
+      format_n(instr, "MOVT", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x2a) {
+      format_n(instr, "STS", "PR, R%u");
       return Ok;
     } else {
       return Error;
@@ -272,6 +318,12 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 2) {
       format_nm(instr, "MOV.L", "R%u, @R%u");
       return Ok;
+    } else if ((instr & 0xf) == 4) {
+      format_nm(instr, "MOV.B", "R%u, @-R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 5) {
+      format_nm(instr, "MOV.W", "R%u, @-R%u");
+      return Ok;
     } else if ((instr & 0xf) == 6) {
       format_nm(instr, "MOV.L", "R%u, @-R%u");
       return Ok;
@@ -281,8 +333,20 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 9) {
       format_nm(instr, "AND", "R%u, R%u");
       return Ok;
+    } else if ((instr & 0xf) == 0xa) {
+      format_nm(instr, "XOR", "R%u, R%u");
+      return Ok;
     } else if ((instr & 0xf) == 0xb) {
       format_nm(instr, "OR", "R%u, R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xc) {
+      format_nm(instr, "CMP/STR", "R%u, R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xe) {
+      format_nm(instr, "MULU.W", "R%u, R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xf) {
+      format_nm(instr, "MULS.W", "R%u, R%u");
       return Ok;
     }
     break;
@@ -291,14 +355,23 @@ Result decode(uint16_t instr) {
     if ((instr & 0xf) == 0) {
       format_nm(instr, "CMP/EQ", "R%u,R%u");
       return Ok;
+    } else if ((instr & 0xf) == 2) {
+      format_nm(instr, "CMP/HS", "R%u,R%u");
+      return Ok;
     } else if ((instr & 0xf) == 3) {
       format_nm(instr, "CMP/GE", "R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 4) {
       format_nm(instr, "DIV", "R%u,R%u");
       return Ok;
+    } else if ((instr & 0xf) == 6) {
+      format_nm(instr, "CMP/HI", "R%u,R%u");
+      return Ok;
     } else if ((instr & 0xf) == 7) {
       format_nm(instr, "CMP/GT", "R%u,R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 8) {
+      format_nm(instr, "SUB", "R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 0xc) {
       format_nm(instr, "ADD", "R%u,R%u");
@@ -306,34 +379,127 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 0xe) {
       format_nm(instr, "ADDC", "R%u,R%u");
       return Ok;
+    } else if ((instr & 0xf) == 0xf) {
+      format_nm(instr, "ADDV", "R%u,R%u");
+      return Ok;
     }
     break;
   }
 
   case 0x4:
-    if ((instr & 0xff) == 0x27) {
-      format_n(instr, "LCD.L", "@R%u+,VBR");
+    if ((instr & 0xff) == 0x00) {
+      format_n(instr, "SHLL", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x01) {
+      format_n(instr, "SHLR", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x02) {
+      format_n(instr, "STS.L", "MACH,@-R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x03) {
+      format_n(instr, "STC.L", "SR,@-R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x04) {
+      format_n(instr, "ROTL", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x05) {
+      format_n(instr, "ROTR", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x06) {
+      format_n(instr, "LDS.L", "@R%u+,MACH");
+      return Ok;
+    } else if ((instr & 0xff) == 0x07) {
+      format_n(instr, "LDS.L", "@R%u+,SR");
       return Ok;
     } else if ((instr & 0xff) == 0x08) {
       format_n(instr, "SHLL2", "R%u");
       return Ok;
-    } else if ((instr & 0xff) == 0x0e) {
-      format_n(instr, "LDC", "R%u, SR");
+    } else if ((instr & 0xff) == 0x09) {
+      format_n(instr, "SHLR2", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x0a) {
+      format_n(instr, "LDS", "R%u,MACH");
       return Ok;
     } else if ((instr & 0xff) == 0x0b) {
       format_n(instr, "JSR", "@R%u");
       return Ok;
+    } else if ((instr & 0xff) == 0x0e) {
+      format_n(instr, "LDC", "R%u,SR");
+      return Ok;
+    } else if ((instr & 0xff) == 0x10) {
+      format_n(instr, "DT", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x11) {
+      format_n(instr, "CMP/PZ", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x12) {
+      format_n(instr, "STS.L", "MACL,@-R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x13) {
+      format_n(instr, "STC.L", "GBR,@-R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x15) {
+      format_n(instr, "CMP/PL", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x16) {
+      format_n(instr, "LDS.L", "@R%u+,MACL");
+      return Ok;
+    } else if ((instr & 0xff) == 0x17) {
+      format_n(instr, "LDC.L", "@R%u+,GBR");
+      return Ok;
+    } else if ((instr & 0xff) == 0x18) {
+      format_n(instr, "SHLL8", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x19) {
+      format_n(instr, "SHLR8", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x1a) {
+      format_n(instr, "LDS", "R%u,MACL");
+      return Ok;
+    } else if ((instr & 0xff) == 0x1b) {
+      format_n(instr, "TAS.B", "@R%u");
+      return Ok;
     } else if ((instr & 0xff) == 0x1e) {
       format_n(instr, "LDC", "R%u,GBR");
+      return Ok;
+    } else if ((instr & 0xff) == 0x20) {
+      format_n(instr, "SHAL", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x21) {
+      format_n(instr, "SHAR", "R%u");
       return Ok;
     } else if ((instr & 0xff) == 0x22) {
       format_n(instr, "STS.L", "PR,@-R%u");
       return Ok;
+    } else if ((instr & 0xff) == 0x23) {
+      format_n(instr, "STC.L", "VBR,@-R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x24) {
+      format_n(instr, "ROTCL", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x25) {
+      format_n(instr, "ROTCR", "R%u");
+      return Ok;
     } else if ((instr & 0xff) == 0x26) {
       format_n(instr, "LDS.L", "@R%u+,PR");
       return Ok;
+    } else if ((instr & 0xff) == 0x27) {
+      format_n(instr, "LDC.L", "@R%u+,VBR");
+      return Ok;
+    } else if ((instr & 0xff) == 0x28) {
+      format_n(instr, "SHLL16", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x29) {
+      format_n(instr, "SHLR16", "R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x2a) {
+      format_n(instr, "LDS", "R%u,PR");
+      return Ok;
     } else if ((instr & 0xff) == 0x2b) {
       format_n(instr, "JMP", "@R%u");
+      return Ok;
+    } else if ((instr & 0xff) == 0x2e) {
+      format_n(instr, "LDC", "R%u,VBR");
       return Ok;
     } else {
       return Error;
@@ -366,11 +532,23 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 0x6) {
       format_nm(instr, "MOV.L", "@R%u+,R%u");
       return Ok;
+    } else if ((instr & 0xf) == 0x8) {
+      format_nm(instr, "SWAP.B", "R%u,R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xa) {
+      format_nm(instr, "NEGC", "R%u,R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xb) {
+      format_nm(instr, "NEG", "R%u,R%u");
+      return Ok;
     } else if ((instr & 0xf) == 0xc) {
       format_nm(instr, "EXTU.B", "R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 0xd) {
       format_nm(instr, "EXTU.W", "R%u,R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xe) {
+      format_nm(instr, "EXTS.B", "R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 0xf) {
       format_nm(instr, "EXTS.W", "R%u,R%u");
@@ -389,6 +567,9 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0x0f00) == 0x100) {
       format_nd4(instr, "MOV.W", "R0,@(%u,R%u)", 2);
       return Ok;
+    } else if ((instr & 0x0f00) == 0x400) {
+      format_nd4(instr, "MOV.B", "@(%u,R%u),R0", 2);
+      return Ok;
     } else if ((instr & 0x0f00) == 0x500) {
       format_nd4(instr, "MOV.W", "@(%u,R%u),R0", 2);
       return Ok;
@@ -403,6 +584,9 @@ Result decode(uint16_t instr) {
       return Ok;
     } else if ((instr & 0x0f00) == 0xd00) {
       format_sd(instr, "BT/S", "PC+%08x");
+      return Ok;
+    } else if ((instr & 0x0f00) == 0xf00) {
+      format_sd(instr, "BF/S", "PC+%08x");
       return Ok;
     } else {
       return Error;
@@ -422,8 +606,23 @@ Result decode(uint16_t instr) {
     return Ok;
 
   case 0xc:
-    if ((instr & 0x0f00) == 0x0100) {
+    if ((instr & 0x0f00) == 0x0000) {
+      format_ud(instr, "MOV.B", "R0,@(%d,GBR)", 1);
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0100) {
       format_ud(instr, "MOV.W", "R0,@(%d,GBR)", 2);
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0200) {
+      format_ud(instr, "MOV.L", "R0,@(%d,GBR)", 4);
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0400) {
+      format_ud(instr, "MOV.B", "@(%d,GBR),R0", 2);
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0500) {
+      format_ud(instr, "MOV.W", "@(%d,GBR),R0", 2);
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0600) {
+      format_ud(instr, "MOV.L", "@(%d,GBR),R0", 4);
       return Ok;
     } else if ((instr & 0x0f00) == 0x0700) {
       format_ud(instr, "MOVA", "@(%d,PC),R0", 4);
@@ -431,8 +630,23 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0x0f00) == 0x0800) {
       format_i(instr, "TST", "#%u, R0");
       return Ok;
+    } else if ((instr & 0x0f00) == 0x0900) {
+      format_i(instr, "AND", "#%u, R0");
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0a00) {
+      format_i(instr, "XOR", "#%u, R0");
+      return Ok;
     } else if ((instr & 0x0f00) == 0x0b00) {
       format_i(instr, "OR", "#%u, R0");
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0d00) {
+      format_i(instr, "AND.B", "#%u, @(R0,GBR)");
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0e00) {
+      format_i(instr, "XOR.B", "#%u, @(R0,GBR)");
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0f00) {
+      format_i(instr, "OR.B", "#%u, @(R0,GBR)");
       return Ok;
     }
     break;
@@ -477,7 +691,7 @@ int main() {
     return 1;
   }
 
-  disassemble(&buffer, 2048, 0x480);
+  disassemble(&buffer, 15*2048, 0x480);
   print_words();
 
   return 0;
