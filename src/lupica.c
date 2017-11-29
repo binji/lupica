@@ -37,8 +37,6 @@
 
 #endif
 
-int g_words[65536];
-
 typedef enum { Ok, Error } Result;
 
 typedef struct Buffer {
@@ -88,49 +86,6 @@ void write_binary_u16(uint16_t x) {
   }
   buffer[16] = 0;
   printf("%s", buffer);
-}
-
-uint16_t g_invalid[] = {
-};
-
-size_t g_num_invalid = sizeof(g_invalid) / sizeof(g_invalid[0]);
-
-int is_known_invalid(uint16_t instr) {
-  size_t j;
-  if (((instr & 0xf000) == 0xf000) ||
-      ((instr & 0xf000) == 0x0000) ||
-      ((instr & 0xf000) == 0x4000) ||
-      ((instr & 0xf000) == 0x8000)) {
-    return 1;
-  }
-
-  for (j = 0; j < g_num_invalid; ++j) {
-    if (g_invalid[j] == instr) {
-      return 1;
-    }
-  }
-  return 0;
-}
-
-void print_words(void) {
-  fflush(stdout);
-  fprintf(stderr, "\n\n\nWORDS!!!!\n");
-  int i = 0;
-  int count = 0;
-  for (i = 0; i < 65536; ++i) {
-    if (is_known_invalid(i)) {
-      continue;
-    }
-
-    if (g_words[i] == 1) {
-      fprintf(stderr, "%04x ", i);
-      if (((count + 1) % 8) == 0) {
-        fprintf(stderr, "\n");
-      }
-      ++count;
-    }
-  }
-  fprintf(stderr, "\n\n");
 }
 
 void print_op(const char* op) {
@@ -327,6 +282,9 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 6) {
       format_nm(instr, "MOV.L", "R%u, @-R%u");
       return Ok;
+    } else if ((instr & 0xf) == 7) {
+      format_nm(instr, "DIV0S", "R%u, R%u");
+      return Ok;
     } else if ((instr & 0xf) == 8) {
       format_nm(instr, "TST", "R%u, R%u");
       return Ok;
@@ -342,16 +300,21 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 0xc) {
       format_nm(instr, "CMP/STR", "R%u, R%u");
       return Ok;
+    } else if ((instr & 0xf) == 0xd) {
+      format_nm(instr, "XTRCT", "R%u, R%u");
+      return Ok;
     } else if ((instr & 0xf) == 0xe) {
       format_nm(instr, "MULU.W", "R%u, R%u");
       return Ok;
     } else if ((instr & 0xf) == 0xf) {
       format_nm(instr, "MULS.W", "R%u, R%u");
       return Ok;
+    } else {
+      return Error;
     }
     break;
 
-  case 0x3: {
+  case 0x3:
     if ((instr & 0xf) == 0) {
       format_nm(instr, "CMP/EQ", "R%u,R%u");
       return Ok;
@@ -362,7 +325,10 @@ Result decode(uint16_t instr) {
       format_nm(instr, "CMP/GE", "R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 4) {
-      format_nm(instr, "DIV", "R%u,R%u");
+      format_nm(instr, "DIV1", "R%u,R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 5) {
+      format_nm(instr, "DMULU.L", "R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 6) {
       format_nm(instr, "CMP/HI", "R%u,R%u");
@@ -373,8 +339,17 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 8) {
       format_nm(instr, "SUB", "R%u,R%u");
       return Ok;
+    } else if ((instr & 0xf) == 0xa) {
+      format_nm(instr, "SUBC", "R%u,R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xb) {
+      format_nm(instr, "SUBV", "R%u,R%u");
+      return Ok;
     } else if ((instr & 0xf) == 0xc) {
       format_nm(instr, "ADD", "R%u,R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0xd) {
+      format_nm(instr, "DMULS.L", "R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 0xe) {
       format_nm(instr, "ADDC", "R%u,R%u");
@@ -382,9 +357,10 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 0xf) {
       format_nm(instr, "ADDV", "R%u,R%u");
       return Ok;
+    } else {
+      return Error;
     }
     break;
-  }
 
   case 0x4:
     if ((instr & 0xff) == 0x00) {
@@ -521,7 +497,7 @@ Result decode(uint16_t instr) {
       format_nm(instr, "MOV.L", "@R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 0x3) {
-      format_nm(instr, "MOV.L", "R%u,R%u");
+      format_nm(instr, "MOV", "R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 0x4) {
       format_nm(instr, "MOV.B", "@R%u+,R%u");
@@ -532,8 +508,14 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0xf) == 0x6) {
       format_nm(instr, "MOV.L", "@R%u+,R%u");
       return Ok;
+    } else if ((instr & 0xf) == 0x7) {
+      format_nm(instr, "NOT", "R%u,R%u");
+      return Ok;
     } else if ((instr & 0xf) == 0x8) {
       format_nm(instr, "SWAP.B", "R%u,R%u");
+      return Ok;
+    } else if ((instr & 0xf) == 0x9) {
+      format_nm(instr, "SWAP.W", "R%u,R%u");
       return Ok;
     } else if ((instr & 0xf) == 0xa) {
       format_nm(instr, "NEGC", "R%u,R%u");
@@ -568,7 +550,7 @@ Result decode(uint16_t instr) {
       format_nd4(instr, "MOV.W", "R0,@(%u,R%u)", 2);
       return Ok;
     } else if ((instr & 0x0f00) == 0x400) {
-      format_nd4(instr, "MOV.B", "@(%u,R%u),R0", 2);
+      format_nd4(instr, "MOV.B", "@(%u,R%u),R0", 1);
       return Ok;
     } else if ((instr & 0x0f00) == 0x500) {
       format_nd4(instr, "MOV.W", "@(%u,R%u),R0", 2);
@@ -615,8 +597,11 @@ Result decode(uint16_t instr) {
     } else if ((instr & 0x0f00) == 0x0200) {
       format_ud(instr, "MOV.L", "R0,@(%d,GBR)", 4);
       return Ok;
+    } else if ((instr & 0x0f00) == 0x0300) {
+      format_i(instr, "TRAPA", "#%d");
+      return Ok;
     } else if ((instr & 0x0f00) == 0x0400) {
-      format_ud(instr, "MOV.B", "@(%d,GBR),R0", 2);
+      format_ud(instr, "MOV.B", "@(%d,GBR),R0", 1);
       return Ok;
     } else if ((instr & 0x0f00) == 0x0500) {
       format_ud(instr, "MOV.W", "@(%d,GBR),R0", 2);
@@ -638,6 +623,9 @@ Result decode(uint16_t instr) {
       return Ok;
     } else if ((instr & 0x0f00) == 0x0b00) {
       format_i(instr, "OR", "#%u, R0");
+      return Ok;
+    } else if ((instr & 0x0f00) == 0x0c00) {
+      format_i(instr, "TST.B", "#%u, @(R0,GBR)");
       return Ok;
     } else if ((instr & 0x0f00) == 0x0d00) {
       format_i(instr, "AND.B", "#%u, @(R0,GBR)");
@@ -665,6 +653,7 @@ Result decode(uint16_t instr) {
 
   }
 
+  assert(0);
   return Error;
 }
 
@@ -676,7 +665,6 @@ void disassemble(Buffer* buffer, size_t num_instrs, uint32_t address) {
     write_binary_u16(instr);
     printf(" ");
     if (decode(instr) == Error) {
-      g_words[instr] = 1;
       printf(MAGENTA ".WORD %04x" WHITE, instr);
     }
 
@@ -691,8 +679,7 @@ int main() {
     return 1;
   }
 
-  disassemble(&buffer, 15*2048, 0x480);
-  print_words();
+  disassemble(&buffer, 1024*1024, 0);
 
   return 0;
 }
