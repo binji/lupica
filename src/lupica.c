@@ -37,22 +37,26 @@
 
 #endif
 
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+
 typedef enum { Ok, Error } Result;
 
 typedef struct Buffer {
-  uint8_t *data;
+  u8 *data;
   size_t size;
 } Buffer;
 
-uint8_t read_u8(Buffer* buffer, uint32_t address) {
+u8 read_u8(Buffer* buffer, u32 address) {
   return buffer->data[address];
 }
 
-uint16_t read_u16(Buffer* buffer, uint32_t address) {
+u16 read_u16(Buffer* buffer, u32 address) {
   return (buffer->data[address] << 8) | buffer->data[address + 1];
 }
 
-uint32_t read_u32(Buffer* buffer, uint32_t address) {
+u32 read_u32(Buffer* buffer, u32 address) {
   return (buffer->data[address] << 24) | (buffer->data[address + 1] << 16) |
          (buffer->data[address + 2] << 8) | buffer->data[address + 3];
 }
@@ -78,7 +82,7 @@ Result read_file(const char* filename, Buffer* buffer) {
   return Ok;
 }
 
-void write_binary_u16(uint16_t x) {
+void write_binary_u16(u16 x) {
   char buffer[17];
   int i;
   for (i = 0; i < 16; i++) {
@@ -92,19 +96,19 @@ void print_op(const char* op) {
   printf(GREEN "%s" WHITE " ", op);
 }
 
-Result format_0(uint16_t instr, const char *op) {
+Result format_0(u16 instr, const char *op) {
   print_op(op);
   return Ok;
 }
 
-Result format_n(uint16_t instr, const char* op, const char* fmt) {
+Result format_n(u16 instr, const char* op, const char* fmt) {
   int n = (instr >> 8) & 0xf;
   print_op(op);
   printf(fmt, n);
   return Ok;
 }
 
-Result format_nm(uint16_t instr, const char* op, const char* fmt) {
+Result format_nm(u16 instr, const char* op, const char* fmt) {
   int n = (instr >> 8) & 0xf;
   int m = (instr >> 4) & 0xf;
   print_op(op);
@@ -112,7 +116,7 @@ Result format_nm(uint16_t instr, const char* op, const char* fmt) {
   return Ok;
 }
 
-Result format_mdn(uint16_t instr, const char* op, const char* fmt, int mul) {
+Result format_mdn(u16 instr, const char* op, const char* fmt, int mul) {
   int n = (instr >> 8) & 0xf;
   int m = (instr >> 4) & 0xf;
   int disp = (instr & 0xf) * mul;
@@ -121,7 +125,7 @@ Result format_mdn(uint16_t instr, const char* op, const char* fmt, int mul) {
   return Ok;
 }
 
-Result format_dmn(uint16_t instr, const char* op, const char* fmt, int mul) {
+Result format_dmn(u16 instr, const char* op, const char* fmt, int mul) {
   int n = (instr >> 8) & 0xf;
   int m = (instr >> 4) & 0xf;
   int disp = (instr & 0xf) * mul;
@@ -130,15 +134,15 @@ Result format_dmn(uint16_t instr, const char* op, const char* fmt, int mul) {
   return Ok;
 }
 
-Result format_nui(uint16_t instr, const char* op, const char* fmt) {
+Result format_nui(u16 instr, const char* op, const char* fmt) {
   int n = (instr >> 8) & 0xf;
-  uint16_t imm = (instr & 0xff);
+  u16 imm = (instr & 0xff);
   print_op(op);
   printf(fmt, imm, n);
   return Ok;
 }
 
-Result format_nsi(uint16_t instr, const char* op, const char* fmt) {
+Result format_nsi(u16 instr, const char* op, const char* fmt) {
   int n = (instr >> 8) & 0xf;
   int imm = (int)(int16_t)(instr & 0xff);
   print_op(op);
@@ -146,7 +150,7 @@ Result format_nsi(uint16_t instr, const char* op, const char* fmt) {
   return Ok;
 }
 
-Result format_nd4(uint16_t instr, const char* op, const char* fmt, int mul) {
+Result format_nd4(u16 instr, const char* op, const char* fmt, int mul) {
   int n = (instr >> 4) & 0xf;
   int disp = (instr & 0xf) * mul;
   print_op(op);
@@ -154,43 +158,43 @@ Result format_nd4(uint16_t instr, const char* op, const char* fmt, int mul) {
   return Ok;
 }
 
-Result format_nd8(uint16_t instr, const char* op, const char* fmt, int mul) {
+Result format_nd8(u16 instr, const char* op, const char* fmt, int mul) {
   int n = (instr >> 8) & 0xf;
-  uint16_t disp = (instr & 0xff) * mul;
+  u16 disp = (instr & 0xff) * mul;
   print_op(op);
   printf(fmt, disp, n);
   return Ok;
 }
 
-Result format_i(uint16_t instr, const char* op, const char* fmt) {
-  uint16_t imm = instr & 0xff;
+Result format_i(u16 instr, const char* op, const char* fmt) {
+  u16 imm = instr & 0xff;
   print_op(op);
   printf(fmt, imm);
   return Ok;
 }
 
-Result format_sd(uint16_t instr, const char* op, const char* fmt) {
-  uint32_t disp = (int)(int8_t)(instr & 0xff) * 2;
+Result format_sd(u16 instr, const char* op, const char* fmt) {
+  u32 disp = (int)(int8_t)(instr & 0xff) * 2;
   print_op(op);
   printf(fmt, disp);
   return Ok;
 }
 
-Result format_ud(uint16_t instr, const char* op, const char* fmt, int mul) {
-  uint32_t disp = (instr & 0xff) * mul;
+Result format_ud(u16 instr, const char* op, const char* fmt, int mul) {
+  u32 disp = (instr & 0xff) * mul;
   print_op(op);
   printf(fmt, disp);
   return Ok;
 }
 
-Result format_d12(uint16_t instr, const char* op, const char* fmt) {
-  uint32_t disp = (instr & 0xfff) * 2;
+Result format_d12(u16 instr, const char* op, const char* fmt) {
+  u32 disp = (instr & 0xfff) * 2;
   print_op(op);
   printf(fmt, disp);
   return Ok;
 }
 
-Result decode(uint16_t instr) {
+Result decode(u16 instr) {
   switch (instr >> 12) {
   case 0x0:
     // clang-format off
@@ -440,10 +444,10 @@ Result decode(uint16_t instr) {
   return Error;
 }
 
-void disassemble(Buffer* buffer, size_t num_instrs, uint32_t address) {
+void disassemble(Buffer* buffer, size_t num_instrs, u32 address) {
   size_t i;
   for (i = 0; i < num_instrs; ++i, address += 2) {
-    uint16_t instr = read_u16(buffer, address);
+    u16 instr = read_u16(buffer, address);
     printf(RED "[%04x]: " WHITE "%04x ", address, instr);
     write_binary_u16(instr);
     printf(" ");
