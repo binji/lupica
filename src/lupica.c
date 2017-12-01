@@ -92,491 +92,303 @@ void print_op(const char* op) {
   printf(GREEN "%s" WHITE " ", op);
 }
 
-void format_0(uint16_t instr, const char *op) { print_op(op); }
+Result format_0(uint16_t instr, const char *op) {
+  print_op(op);
+  return Ok;
+}
 
-void format_n(uint16_t instr, const char* op, const char* fmt) {
+Result format_n(uint16_t instr, const char* op, const char* fmt) {
   int n = (instr >> 8) & 0xf;
   print_op(op);
   printf(fmt, n);
+  return Ok;
 }
 
-void format_nm(uint16_t instr, const char* op, const char* fmt) {
+Result format_nm(uint16_t instr, const char* op, const char* fmt) {
   int n = (instr >> 8) & 0xf;
   int m = (instr >> 4) & 0xf;
   print_op(op);
   printf(fmt, m, n);
+  return Ok;
 }
 
-void format_mdn(uint16_t instr, const char* op, const char* fmt, int mul) {
+Result format_mdn(uint16_t instr, const char* op, const char* fmt, int mul) {
   int n = (instr >> 8) & 0xf;
   int m = (instr >> 4) & 0xf;
   int disp = (instr & 0xf) * mul;
   print_op(op);
   printf(fmt, m, disp, n);
+  return Ok;
 }
 
-void format_dmn(uint16_t instr, const char* op, const char* fmt, int mul) {
+Result format_dmn(uint16_t instr, const char* op, const char* fmt, int mul) {
   int n = (instr >> 8) & 0xf;
   int m = (instr >> 4) & 0xf;
   int disp = (instr & 0xf) * mul;
   print_op(op);
   printf(fmt, disp, m, n);
+  return Ok;
 }
 
-void format_nui(uint16_t instr, const char* op, const char* fmt) {
+Result format_nui(uint16_t instr, const char* op, const char* fmt) {
   int n = (instr >> 8) & 0xf;
   uint16_t imm = (instr & 0xff);
   print_op(op);
   printf(fmt, imm, n);
+  return Ok;
 }
 
-void format_nsi(uint16_t instr, const char* op, const char* fmt) {
+Result format_nsi(uint16_t instr, const char* op, const char* fmt) {
   int n = (instr >> 8) & 0xf;
   int imm = (int)(int16_t)(instr & 0xff);
   print_op(op);
   printf(fmt, imm, n);
+  return Ok;
 }
 
-void format_nd4(uint16_t instr, const char* op, const char* fmt, int mul) {
+Result format_nd4(uint16_t instr, const char* op, const char* fmt, int mul) {
   int n = (instr >> 4) & 0xf;
   int disp = (instr & 0xf) * mul;
   print_op(op);
   printf(fmt, disp, n);
+  return Ok;
 }
 
-void format_nd8(uint16_t instr, const char* op, const char* fmt, int mul) {
+Result format_nd8(uint16_t instr, const char* op, const char* fmt, int mul) {
   int n = (instr >> 8) & 0xf;
   uint16_t disp = (instr & 0xff) * mul;
   print_op(op);
   printf(fmt, disp, n);
+  return Ok;
 }
 
-void format_i(uint16_t instr, const char* op, const char* fmt) {
+Result format_i(uint16_t instr, const char* op, const char* fmt) {
   uint16_t imm = instr & 0xff;
   print_op(op);
   printf(fmt, imm);
+  return Ok;
 }
 
-void format_sd(uint16_t instr, const char* op, const char* fmt) {
+Result format_sd(uint16_t instr, const char* op, const char* fmt) {
   uint32_t disp = (int)(int8_t)(instr & 0xff) * 2;
   print_op(op);
   printf(fmt, disp);
+  return Ok;
 }
 
-void format_ud(uint16_t instr, const char* op, const char* fmt, int mul) {
+Result format_ud(uint16_t instr, const char* op, const char* fmt, int mul) {
   uint32_t disp = (instr & 0xff) * mul;
   print_op(op);
   printf(fmt, disp);
+  return Ok;
 }
 
-void format_d12(uint16_t instr, const char* op, const char* fmt) {
+Result format_d12(uint16_t instr, const char* op, const char* fmt) {
   uint32_t disp = (instr & 0xfff) * 2;
   print_op(op);
   printf(fmt, disp);
+  return Ok;
 }
 
 Result decode(uint16_t instr) {
-  uint8_t top4 = instr >> 12;
-  switch (top4) {
+  switch (instr >> 12) {
   case 0x0:
-    if (instr == 0x8) {
-      format_0(instr, "CLRT");
-      return Ok;
-    } else if (instr == 9) {
-      format_0(instr, "NOP");
-      return Ok;
-    } else if (instr == 0xb) {
-      format_0(instr, "RTS");
-      return Ok;
-    } else if (instr == 0x18) {
-      format_0(instr, "SETT");
-      return Ok;
-    } else if (instr == 0x19) {
-      format_0(instr, "DIV0U");
-      return Ok;
-    } else if (instr == 0x1b) {
-      format_0(instr, "SLEEP");
-      return Ok;
-    } else if (instr == 0x28) {
-      format_0(instr, "CLRMAC");
-      return Ok;
-    } else if (instr == 0x2b) {
-      format_0(instr, "RTE");
-      return Ok;
-    } else if ((instr & 0xf) == 4) {
-      format_nm(instr, "MOV.B", "R%u,@(R0,R%u)");
-      return Ok;
-    } else if ((instr & 0xf) == 5) {
-      format_nm(instr, "MOV.W", "R%u,@(R0,R%u)");
-      return Ok;
-    } else if ((instr & 0xf) == 6) {
-      format_nm(instr, "MOV.L", "R%u,@(R0,R%u)");
-      return Ok;
-    } else if ((instr & 0xf) == 7) {
-      format_nm(instr, "MUL.L", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xc) {
-      format_nm(instr, "MOV.B", "@(R0,R%u),R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xd) {
-      format_nm(instr, "MOV.W", "@(R0,R%u),R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xe) {
-      format_nm(instr, "MOV.L", "@(R0,R%u),R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xf) {
-      format_nm(instr, "MAC.L", "@R%u+,@R%u+");
-      return Ok;
-    } else if ((instr & 0xff) == 0x02) {
-      format_n(instr, "STC", "SR,R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x03) {
-      format_nm(instr, "BSRF", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x0a) {
-      format_n(instr, "STS", "MACH,R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x12) {
-      format_n(instr, "STC", "GBR, R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x1a) {
-      format_n(instr, "STS", "MACL, R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x22) {
-      format_n(instr, "STC", "VBR, R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x23) {
-      format_nm(instr, "BRAF", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x29) {
-      format_n(instr, "MOVT", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x2a) {
-      format_n(instr, "STS", "PR, R%u");
-      return Ok;
-    } else {
-      return Error;
+    // clang-format off
+    switch (instr & 0xf) {
+      case 0x2:
+        switch (instr & 0xf0) {
+          case 0x00: return format_n(instr, "STC", "SR, R%u");
+          case 0x10: return format_n(instr, "STC", "GBR, R%u");
+          case 0x20: return format_n(instr, "STC", "VBR, R%u");
+        }
+        break;
+      case 0x3:
+        switch (instr & 0xf0) {
+          case 0x00: return format_nm(instr, "BSRF", "R%u");
+          case 0x20: return format_nm(instr, "BRAF", "R%u");
+        }
+        break;
+      case 0x4: return format_nm(instr, "MOV.B", "R%u, @(R0, R%u)");
+      case 0x5: return format_nm(instr, "MOV.W", "R%u, @(R0, R%u)");
+      case 0x6: return format_nm(instr, "MOV.L", "R%u, @(R0, R%u)");
+      case 0x7: return format_nm(instr, "MUL.L", "R%u, R%u");
+      case 0x8:
+        switch (instr) {
+          case 0x08: return format_0(instr, "CLRT");
+          case 0x18: return format_0(instr, "SETT");
+          case 0x28: return format_0(instr, "CLRMAC");
+        }
+        break;
+      case 0x9:
+        switch (instr & 0xf0) {
+          case 0x00: return format_0(instr, "NOP");
+          case 0x10: return format_0(instr, "DIV0U");
+          case 0x20: return format_n(instr, "MOVT", "R%u");
+        }
+        break;
+      case 0xa:
+        switch (instr & 0xf0) {
+          case 0x00: return format_n(instr, "STS", "MACH, R%u");
+          case 0x10: return format_n(instr, "STS", "MACL, R%u");
+          case 0x20: return format_n(instr, "STS", "PR, R%u");
+        }
+        break;
+      case 0xb: // RTS SLEEP RTE
+        switch (instr & 0xf0) {
+          case 0x00: return format_0(instr, "RTS");
+          case 0x10: return format_0(instr, "SLEEP");
+          case 0x20: return format_0(instr, "RTE");
+        }
+        break;
+      case 0xc: return format_nm(instr, "MOV.B", "@(R0, R%u), R%u");
+      case 0xd: return format_nm(instr, "MOV.W", "@(R0, R%u), R%u");
+      case 0xe: return format_nm(instr, "MOV.L", "@(R0, R%u), R%u");
+      case 0xf: return format_nm(instr, "MAC.L", "@R%u+, @R%u+");
     }
-    break;
+    // clang-format on
+    return Error;
 
   case 0x1:
-    format_mdn(instr, "MOV.L", "R%u, @(%u,R%u)", 4);
+    format_mdn(instr, "MOV.L", "R%u, @(%u, R%u)", 4);
     return Ok;
 
   case 0x2:
-    if ((instr & 0xf) == 0) {
-      format_nm(instr, "MOV.B", "R%u, @R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 1) {
-      format_nm(instr, "MOV.W", "R%u, @R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 2) {
-      format_nm(instr, "MOV.L", "R%u, @R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 4) {
-      format_nm(instr, "MOV.B", "R%u, @-R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 5) {
-      format_nm(instr, "MOV.W", "R%u, @-R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 6) {
-      format_nm(instr, "MOV.L", "R%u, @-R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 7) {
-      format_nm(instr, "DIV0S", "R%u, R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 8) {
-      format_nm(instr, "TST", "R%u, R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 9) {
-      format_nm(instr, "AND", "R%u, R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xa) {
-      format_nm(instr, "XOR", "R%u, R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xb) {
-      format_nm(instr, "OR", "R%u, R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xc) {
-      format_nm(instr, "CMP/STR", "R%u, R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xd) {
-      format_nm(instr, "XTRCT", "R%u, R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xe) {
-      format_nm(instr, "MULU.W", "R%u, R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xf) {
-      format_nm(instr, "MULS.W", "R%u, R%u");
-      return Ok;
-    } else {
-      return Error;
+    // clang-format off
+    switch (instr & 0xf) {
+      case 0x0: return format_nm(instr, "MOV.B", "R%u, @R%u");
+      case 0x1: return format_nm(instr, "MOV.W", "R%u, @R%u");
+      case 0x2: return format_nm(instr, "MOV.L", "R%u, @R%u");
+      case 0x4: return format_nm(instr, "MOV.B", "R%u, @-R%u");
+      case 0x5: return format_nm(instr, "MOV.W", "R%u, @-R%u");
+      case 0x6: return format_nm(instr, "MOV.L", "R%u, @-R%u");
+      case 0x7: return format_nm(instr, "DIV0S", "R%u, R%u");
+      case 0x8: return format_nm(instr, "TST", "R%u, R%u");
+      case 0x9: return format_nm(instr, "AND", "R%u, R%u");
+      case 0xa: return format_nm(instr, "XOR", "R%u, R%u");
+      case 0xb: return format_nm(instr, "OR", "R%u, R%u");
+      case 0xc: return format_nm(instr, "CMP/STR", "R%u, R%u");
+      case 0xd: return format_nm(instr, "XTRCT", "R%u, R%u");
+      case 0xe: return format_nm(instr, "MULU.W", "R%u, R%u");
+      case 0xf: return format_nm(instr, "MULS.W", "R%u, R%u");
     }
-    break;
+    // clang-format on
+    return Error;
 
   case 0x3:
-    if ((instr & 0xf) == 0) {
-      format_nm(instr, "CMP/EQ", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 2) {
-      format_nm(instr, "CMP/HS", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 3) {
-      format_nm(instr, "CMP/GE", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 4) {
-      format_nm(instr, "DIV1", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 5) {
-      format_nm(instr, "DMULU.L", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 6) {
-      format_nm(instr, "CMP/HI", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 7) {
-      format_nm(instr, "CMP/GT", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 8) {
-      format_nm(instr, "SUB", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xa) {
-      format_nm(instr, "SUBC", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xb) {
-      format_nm(instr, "SUBV", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xc) {
-      format_nm(instr, "ADD", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xd) {
-      format_nm(instr, "DMULS.L", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xe) {
-      format_nm(instr, "ADDC", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xf) {
-      format_nm(instr, "ADDV", "R%u,R%u");
-      return Ok;
-    } else {
-      return Error;
+    // clang-format off
+    switch (instr & 0xf) {
+      case 0x0: return format_nm(instr, "CMP/EQ", "R%u, R%u");
+      case 0x2: return format_nm(instr, "CMP/HS", "R%u, R%u");
+      case 0x3: return format_nm(instr, "CMP/GE", "R%u, R%u");
+      case 0x4: return format_nm(instr, "DIV1", "R%u, R%u");
+      case 0x5: return format_nm(instr, "DMULU.L", "R%u, R%u");
+      case 0x6: return format_nm(instr, "CMP/HI", "R%u, R%u");
+      case 0x7: return format_nm(instr, "CMP/GT", "R%u, R%u");
+      case 0x8: return format_nm(instr, "SUB", "R%u, R%u");
+      case 0xa: return format_nm(instr, "SUBC", "R%u, R%u");
+      case 0xb: return format_nm(instr, "SUBV", "R%u, R%u");
+      case 0xc: return format_nm(instr, "ADD", "R%u, R%u");
+      case 0xd: return format_nm(instr, "DMULS.L", "R%u, R%u");
+      case 0xe: return format_nm(instr, "ADDC", "R%u, R%u");
+      case 0xf: return format_nm(instr, "ADDV", "R%u, R%u");
     }
-    break;
+    // clang-format on
+    return Error;
 
   case 0x4:
-    if ((instr & 0xff) == 0x00) {
-      format_n(instr, "SHLL", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x01) {
-      format_n(instr, "SHLR", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x02) {
-      format_n(instr, "STS.L", "MACH,@-R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x03) {
-      format_n(instr, "STC.L", "SR,@-R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x04) {
-      format_n(instr, "ROTL", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x05) {
-      format_n(instr, "ROTR", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x06) {
-      format_n(instr, "LDS.L", "@R%u+,MACH");
-      return Ok;
-    } else if ((instr & 0xff) == 0x07) {
-      format_n(instr, "LDS.L", "@R%u+,SR");
-      return Ok;
-    } else if ((instr & 0xff) == 0x08) {
-      format_n(instr, "SHLL2", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x09) {
-      format_n(instr, "SHLR2", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x0a) {
-      format_n(instr, "LDS", "R%u,MACH");
-      return Ok;
-    } else if ((instr & 0xff) == 0x0b) {
-      format_n(instr, "JSR", "@R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x0e) {
-      format_n(instr, "LDC", "R%u,SR");
-      return Ok;
-    } else if ((instr & 0xff) == 0x10) {
-      format_n(instr, "DT", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x11) {
-      format_n(instr, "CMP/PZ", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x12) {
-      format_n(instr, "STS.L", "MACL,@-R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x13) {
-      format_n(instr, "STC.L", "GBR,@-R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x15) {
-      format_n(instr, "CMP/PL", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x16) {
-      format_n(instr, "LDS.L", "@R%u+,MACL");
-      return Ok;
-    } else if ((instr & 0xff) == 0x17) {
-      format_n(instr, "LDC.L", "@R%u+,GBR");
-      return Ok;
-    } else if ((instr & 0xff) == 0x18) {
-      format_n(instr, "SHLL8", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x19) {
-      format_n(instr, "SHLR8", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x1a) {
-      format_n(instr, "LDS", "R%u,MACL");
-      return Ok;
-    } else if ((instr & 0xff) == 0x1b) {
-      format_n(instr, "TAS.B", "@R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x1e) {
-      format_n(instr, "LDC", "R%u,GBR");
-      return Ok;
-    } else if ((instr & 0xff) == 0x20) {
-      format_n(instr, "SHAL", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x21) {
-      format_n(instr, "SHAR", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x22) {
-      format_n(instr, "STS.L", "PR,@-R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x23) {
-      format_n(instr, "STC.L", "VBR,@-R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x24) {
-      format_n(instr, "ROTCL", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x25) {
-      format_n(instr, "ROTCR", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x26) {
-      format_n(instr, "LDS.L", "@R%u+,PR");
-      return Ok;
-    } else if ((instr & 0xff) == 0x27) {
-      format_n(instr, "LDC.L", "@R%u+,VBR");
-      return Ok;
-    } else if ((instr & 0xff) == 0x28) {
-      format_n(instr, "SHLL16", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x29) {
-      format_n(instr, "SHLR16", "R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x2a) {
-      format_n(instr, "LDS", "R%u,PR");
-      return Ok;
-    } else if ((instr & 0xff) == 0x2b) {
-      format_n(instr, "JMP", "@R%u");
-      return Ok;
-    } else if ((instr & 0xff) == 0x2e) {
-      format_n(instr, "LDC", "R%u,VBR");
-      return Ok;
-    } else {
-      return Error;
+    // clang-format off
+    switch (instr & 0xff) {
+      case 0x00: return format_n(instr, "SHLL", "R%u");
+      case 0x01: return format_n(instr, "SHLR", "R%u");
+      case 0x02: return format_n(instr, "STS.L", "MACH, @-R%u");
+      case 0x03: return format_n(instr, "STC.L", "SR,@ -R%u");
+      case 0x04: return format_n(instr, "ROTL", "R%u");
+      case 0x05: return format_n(instr, "ROTR", "R%u");
+      case 0x06: return format_n(instr, "LDS.L", "@R%u+, MACH");
+      case 0x07: return format_n(instr, "LDS.L", "@R%u+, SR");
+      case 0x08: return format_n(instr, "SHLL2", "R%u");
+      case 0x09: return format_n(instr, "SHLR2", "R%u");
+      case 0x0a: return format_n(instr, "LDS", "R%u, MACH");
+      case 0x0b: return format_n(instr, "JSR", "@R%u");
+      case 0x0e: return format_n(instr, "LDC", "R%u, SR");
+      case 0x10: return format_n(instr, "DT", "R%u");
+      case 0x11: return format_n(instr, "CMP/PZ", "R%u");
+      case 0x12: return format_n(instr, "STS.L", "MACL, @-R%u");
+      case 0x13: return format_n(instr, "STC.L", "GBR, @-R%u");
+      case 0x15: return format_n(instr, "CMP/PL", "R%u");
+      case 0x16: return format_n(instr, "LDS.L", "@R%u+, MACL");
+      case 0x17: return format_n(instr, "LDC.L", "@R%u+, GBR");
+      case 0x18: return format_n(instr, "SHLL8", "R%u");
+      case 0x19: return format_n(instr, "SHLR8", "R%u");
+      case 0x1a: return format_n(instr, "LDS", "R%u, MACL");
+      case 0x1b: return format_n(instr, "TAS.B", "@R%u");
+      case 0x1e: return format_n(instr, "LDC", "R%u, GBR");
+      case 0x20: return format_n(instr, "SHAL", "R%u");
+      case 0x21: return format_n(instr, "SHAR", "R%u");
+      case 0x22: return format_n(instr, "STS.L", "PR, @-R%u");
+      case 0x23: return format_n(instr, "STC.L", "VBR, @-R%u");
+      case 0x24: return format_n(instr, "ROTCL", "R%u");
+      case 0x25: return format_n(instr, "ROTCR", "R%u");
+      case 0x26: return format_n(instr, "LDS.L", "@R%u+, PR");
+      case 0x27: return format_n(instr, "LDC.L", "@R%u+, VBR");
+      case 0x28: return format_n(instr, "SHLL16", "R%u");
+      case 0x29: return format_n(instr, "SHLR16", "R%u");
+      case 0x2a: return format_n(instr, "LDS", "R%u, PR");
+      case 0x2b: return format_n(instr, "JMP", "@R%u");
+      case 0x2e: return format_n(instr, "LDC", "R%u, VBR");
     }
-    break;
+    // clang-format on
+    return Error;
 
   case 0x5:
-    format_dmn(instr, "MOV.L", "@(%u,R%u),R%u", 4);
+    format_dmn(instr, "MOV.L", "@(%u, R%u), R%u", 4);
     return Ok;
 
   case 0x6:
-    if ((instr & 0xf) == 0x0) {
-      format_nm(instr, "MOV.B", "@R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0x1) {
-      format_nm(instr, "MOV.W", "@R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0x2) {
-      format_nm(instr, "MOV.L", "@R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0x3) {
-      format_nm(instr, "MOV", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0x4) {
-      format_nm(instr, "MOV.B", "@R%u+,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0x5) {
-      format_nm(instr, "MOV.W", "@R%u+,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0x6) {
-      format_nm(instr, "MOV.L", "@R%u+,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0x7) {
-      format_nm(instr, "NOT", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0x8) {
-      format_nm(instr, "SWAP.B", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0x9) {
-      format_nm(instr, "SWAP.W", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xa) {
-      format_nm(instr, "NEGC", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xb) {
-      format_nm(instr, "NEG", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xc) {
-      format_nm(instr, "EXTU.B", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xd) {
-      format_nm(instr, "EXTU.W", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xe) {
-      format_nm(instr, "EXTS.B", "R%u,R%u");
-      return Ok;
-    } else if ((instr & 0xf) == 0xf) {
-      format_nm(instr, "EXTS.W", "R%u,R%u");
-      return Ok;
+    // clang-format off
+    switch (instr & 0xf) {
+      case 0x0: return format_nm(instr, "MOV.B", "@R%u, R%u");
+      case 0x1: return format_nm(instr, "MOV.W", "@R%u, R%u");
+      case 0x2: return format_nm(instr, "MOV.L", "@R%u, R%u");
+      case 0x3: return format_nm(instr, "MOV", "R%u, R%u");
+      case 0x4: return format_nm(instr, "MOV.B", "@R%u+, R%u");
+      case 0x5: return format_nm(instr, "MOV.W", "@R%u+, R%u");
+      case 0x6: return format_nm(instr, "MOV.L", "@R%u+, R%u");
+      case 0x7: return format_nm(instr, "NOT", "R%u, R%u");
+      case 0x8: return format_nm(instr, "SWAP.B", "R%u, R%u");
+      case 0x9: return format_nm(instr, "SWAP.W", "R%u, R%u");
+      case 0xa: return format_nm(instr, "NEGC", "R%u, R%u");
+      case 0xb: return format_nm(instr, "NEG", "R%u, R%u");
+      case 0xc: return format_nm(instr, "EXTU.B", "R%u, R%u");
+      case 0xd: return format_nm(instr, "EXTU.W", "R%u, R%u");
+      case 0xe: return format_nm(instr, "EXTS.B", "R%u, R%u");
+      case 0xf: return format_nm(instr, "EXTS.W", "R%u, R%u");
     }
-    break;
+    // clang-format on
+    return Error;
 
   case 0x7:
     format_nui(instr, "ADD", "#%d,R%u");
     return Ok;
 
   case 0x8:
-    if ((instr & 0x0f00) == 0x000) {
-      format_nd4(instr, "MOV.B", "R0,@(%u,R%u)", 1);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x100) {
-      format_nd4(instr, "MOV.W", "R0,@(%u,R%u)", 2);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x400) {
-      format_nd4(instr, "MOV.B", "@(%u,R%u),R0", 1);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x500) {
-      format_nd4(instr, "MOV.W", "@(%u,R%u),R0", 2);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x800) {
-      format_i(instr, "CMP/EQ", "#%u,R0");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x900) {
-      format_sd(instr, "BT", "PC+%08x");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0xb00) {
-      format_sd(instr, "BF", "PC+%08x");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0xd00) {
-      format_sd(instr, "BT/S", "PC+%08x");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0xf00) {
-      format_sd(instr, "BF/S", "PC+%08x");
-      return Ok;
-    } else {
-      return Error;
+    // clang-format off
+    switch (instr & 0x0f00) {
+      case 0x000: return format_nd4(instr, "MOV.B", "R0, @(%u, R%u)", 1);
+      case 0x100: return format_nd4(instr, "MOV.W", "R0, @(%u, R%u)", 2);
+      case 0x400: return format_nd4(instr, "MOV.B", "@(%u, R%u), R0", 1);
+      case 0x500: return format_nd4(instr, "MOV.W", "@(%u, R%u), R0", 2);
+      case 0x800: return format_i(instr, "CMP/EQ", "#%u, R0");
+      case 0x900: return format_sd(instr, "BT", "PC+%08x");
+      case 0xb00: return format_sd(instr, "BF", "PC+%08x");
+      case 0xd00: return format_sd(instr, "BT/S", "PC+%08x");
+      case 0xf00: return format_sd(instr, "BF/S", "PC+%08x");
     }
-    break;
+    // clang-format on
+    return Error;
 
   case 0x9:
-    format_nd8(instr, "MOV.W", "@(%u,PC),R%u", 2);
+    format_nd8(instr, "MOV.W", "@(%u, PC), R%u", 2);
     return Ok;
 
   case 0xa:
@@ -588,63 +400,34 @@ Result decode(uint16_t instr) {
     return Ok;
 
   case 0xc:
-    if ((instr & 0x0f00) == 0x0000) {
-      format_ud(instr, "MOV.B", "R0,@(%d,GBR)", 1);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0100) {
-      format_ud(instr, "MOV.W", "R0,@(%d,GBR)", 2);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0200) {
-      format_ud(instr, "MOV.L", "R0,@(%d,GBR)", 4);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0300) {
-      format_i(instr, "TRAPA", "#%d");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0400) {
-      format_ud(instr, "MOV.B", "@(%d,GBR),R0", 1);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0500) {
-      format_ud(instr, "MOV.W", "@(%d,GBR),R0", 2);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0600) {
-      format_ud(instr, "MOV.L", "@(%d,GBR),R0", 4);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0700) {
-      format_ud(instr, "MOVA", "@(%d,PC),R0", 4);
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0800) {
-      format_i(instr, "TST", "#%u, R0");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0900) {
-      format_i(instr, "AND", "#%u, R0");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0a00) {
-      format_i(instr, "XOR", "#%u, R0");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0b00) {
-      format_i(instr, "OR", "#%u, R0");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0c00) {
-      format_i(instr, "TST.B", "#%u, @(R0,GBR)");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0d00) {
-      format_i(instr, "AND.B", "#%u, @(R0,GBR)");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0e00) {
-      format_i(instr, "XOR.B", "#%u, @(R0,GBR)");
-      return Ok;
-    } else if ((instr & 0x0f00) == 0x0f00) {
-      format_i(instr, "OR.B", "#%u, @(R0,GBR)");
-      return Ok;
+    // clang-format off
+    switch (instr & 0x0f00) {
+      case 0x0000: return format_ud(instr, "MOV.B", "R0, @(%d, GBR)", 1);
+      case 0x0100: return format_ud(instr, "MOV.W", "R0, @(%d, GBR)", 2);
+      case 0x0200: return format_ud(instr, "MOV.L", "R0, @(%d, GBR)", 4);
+      case 0x0300: return format_i(instr, "TRAPA", "#%d");
+      case 0x0400: return format_ud(instr, "MOV.B", "@(%d, GBR), R0", 1);
+      case 0x0500: return format_ud(instr, "MOV.W", "@(%d, GBR), R0", 2);
+      case 0x0600: return format_ud(instr, "MOV.L", "@(%d, GBR), R0", 4);
+      case 0x0700: return format_ud(instr, "MOVA", "@(%d, PC), R0", 4);
+      case 0x0800: return format_i(instr, "TST", "#%u, R0");
+      case 0x0900: return format_i(instr, "AND", "#%u, R0");
+      case 0x0a00: return format_i(instr, "XOR", "#%u, R0");
+      case 0x0b00: return format_i(instr, "OR", "#%u, R0");
+      case 0x0c00: return format_i(instr, "TST.B", "#%u, @(R0, GBR)");
+      case 0x0d00: return format_i(instr, "AND.B", "#%u, @(R0, GBR)");
+      case 0x0e00: return format_i(instr, "XOR.B", "#%u, @(R0, GBR)");
+      case 0x0f00: return format_i(instr, "OR.B", "#%u, @(R0, GBR)");
     }
-    break;
+    // clang-format on
+    return Error;
 
   case 0xd:
-    format_nd8(instr, "MOV.L", "@(%d,PC),R%u", 4);
+    format_nd8(instr, "MOV.L", "@(%d, PC), R%u", 4);
     return Ok;
 
   case 0xe:
-    format_nsi(instr, "MOV", "#%d,R%u");
+    format_nsi(instr, "MOV", "#%d, R%u");
     return Ok;
 
   case 0xf: {
