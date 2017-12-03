@@ -40,6 +40,9 @@
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
+typedef int8_t s8;
+typedef int16_t s16;
+typedef int32_t s32;
 
 typedef enum { Ok, Error } Result;
 
@@ -47,6 +50,9 @@ typedef struct Buffer {
   u8 *data;
   size_t size;
 } Buffer;
+
+// HACK HACK HACK
+u32 pc;
 
 u8 read_u8(Buffer* buffer, u32 address) {
   return buffer->data[address];
@@ -162,7 +168,7 @@ Result format_nd8(u16 instr, const char* op, const char* fmt, int mul) {
   int n = (instr >> 8) & 0xf;
   u16 disp = (instr & 0xff) * mul;
   print_op(op);
-  printf(fmt, disp, n);
+  printf(fmt, disp, n, (mul == 4 ? (pc & ~3) : pc) + disp);
   return Ok;
 }
 
@@ -176,7 +182,7 @@ Result format_i(u16 instr, const char* op, const char* fmt) {
 Result format_sd(u16 instr, const char* op, const char* fmt) {
   u32 disp = (int)(int8_t)(instr & 0xff) * 2;
   print_op(op);
-  printf(fmt, disp);
+  printf(fmt, disp, pc + disp);
   return Ok;
 }
 
@@ -187,10 +193,17 @@ Result format_ud(u16 instr, const char* op, const char* fmt, int mul) {
   return Ok;
 }
 
-Result format_d12(u16 instr, const char* op, const char* fmt) {
-  u32 disp = (instr & 0xfff) * 2;
+Result format_mova(u16 instr, const char* op, const char* fmt, int mul) {
+  u32 disp = (instr & 0xff) * mul;
   print_op(op);
-  printf(fmt, disp);
+  printf(fmt, disp, pc + disp);
+  return Ok;
+}
+
+Result format_d12(u16 instr, const char* op, const char* fmt) {
+  u32 disp = (s32)((instr & 0xfff) << 20) >> 19;
+  print_op(op);
+  printf(fmt, disp, pc + disp);
   return Ok;
 }
 
@@ -383,24 +396,24 @@ Result decode(u16 instr) {
       case 0x400: return format_nd4(instr, "MOV.B", "@(%u, R%u), R0", 1);
       case 0x500: return format_nd4(instr, "MOV.W", "@(%u, R%u), R0", 2);
       case 0x800: return format_i(instr, "CMP/EQ", "#%u, R0");
-      case 0x900: return format_sd(instr, "BT", "PC+%08x");
-      case 0xb00: return format_sd(instr, "BF", "PC+%08x");
-      case 0xd00: return format_sd(instr, "BT/S", "PC+%08x");
-      case 0xf00: return format_sd(instr, "BF/S", "PC+%08x");
+      case 0x900: return format_sd(instr, "BT", "PC+%08x  ; %08x");
+      case 0xb00: return format_sd(instr, "BF", "PC+%08x  ; %08x");
+      case 0xd00: return format_sd(instr, "BT/S", "PC+%08x  ; %08x");
+      case 0xf00: return format_sd(instr, "BF/S", "PC+%08x  ; %08x");
     }
     // clang-format on
     return Error;
 
   case 0x9:
-    format_nd8(instr, "MOV.W", "@(%u, PC), R%u", 2);
+    format_nd8(instr, "MOV.W", "@(%u, PC), R%u  ; @%08x", 2);
     return Ok;
 
   case 0xa:
-    format_d12(instr, "BRA", "PC+%u");
+    format_d12(instr, "BRA", "PC+%u  ; %08x");
     return Ok;
 
   case 0xb:
-    format_d12(instr, "BSR", "PC+%08x");
+    format_d12(instr, "BSR", "PC+%08x  ; %08x");
     return Ok;
 
   case 0xc:
@@ -413,7 +426,7 @@ Result decode(u16 instr) {
       case 0x0400: return format_ud(instr, "MOV.B", "@(%d, GBR), R0", 1);
       case 0x0500: return format_ud(instr, "MOV.W", "@(%d, GBR), R0", 2);
       case 0x0600: return format_ud(instr, "MOV.L", "@(%d, GBR), R0", 4);
-      case 0x0700: return format_ud(instr, "MOVA", "@(%d, PC), R0", 4);
+      case 0x0700: return format_mova(instr, "MOVA", "@(%d, PC), R0  ; %08x", 4);
       case 0x0800: return format_i(instr, "TST", "#%u, R0");
       case 0x0900: return format_i(instr, "AND", "#%u, R0");
       case 0x0a00: return format_i(instr, "XOR", "#%u, R0");
@@ -427,7 +440,7 @@ Result decode(u16 instr) {
     return Error;
 
   case 0xd:
-    format_nd8(instr, "MOV.L", "@(%d, PC), R%u", 4);
+    format_nd8(instr, "MOV.L", "@(%d, PC), R%u  ; @%08x", 4);
     return Ok;
 
   case 0xe:
@@ -451,6 +464,7 @@ void disassemble(Buffer* buffer, size_t num_instrs, u32 address) {
     printf(RED "[%04x]: " WHITE "%04x ", address, instr);
     write_binary_u16(instr);
     printf(" ");
+    pc = 0xe0000004 + address;
     if (decode(instr) == Error) {
       printf(MAGENTA ".WORD %04x" WHITE, instr);
     }
