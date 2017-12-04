@@ -337,78 +337,74 @@ void print_instr(Buffer* buffer, Instr instr) {
   }
 }
 
-Instr format_0(Op op) {
-  return (Instr){op: op};
-}
+Instr format_0(Op op) { return (Instr){.op = op}; }
 
 Instr format_n(u16 code, Op op) {
-  return (Instr){op : op, n : (code >> 8) & 0xf};
+  return (Instr){.op = op, .n = (code >> 8) & 0xf};
 }
 
 Instr format_m(u16 code, Op op) {
-  return (Instr){op : op, m : (code >> 8) & 0xf};
+  return (Instr){.op = op, .m = (code >> 8) & 0xf};
 }
 
 Instr format_nm(u16 code, Op op) {
-  return (Instr){op : op, n : (code >> 8) & 0xf, m : (code >> 4) & 0xf};
+  return (Instr){.op = op, .n = (code >> 8) & 0xf, .m = (code >> 4) & 0xf};
 }
 
 Instr format_nmd(u16 code, Op op, int mul) {
-  return (Instr){
-    op : op,
-    n : (code >> 8) & 0xf,
-    m : (code >> 4) & 0xf,
-    d : (code & 0xf) * mul
-  };
+  return (Instr){.op = op,
+                 .n = (code >> 8) & 0xf,
+                 .m = (code >> 4) & 0xf,
+                 .d = (code & 0xf) * mul};
 }
 
 Instr format_nui(u16 code, Op op) {
-  return (Instr){op : op, n : (code >> 8) & 0xf, i : (code & 0xff)};
+  return (Instr){.op = op, .n = (code >> 8) & 0xf, .i = (code & 0xff)};
 }
 
 Instr format_nsi(u16 code, Op op) {
   return (Instr){
-    op : op,
-    n : (code >> 8) & 0xf,
-    i : SIGN_EXTEND(code & 0xff, 8),
+      .op = op,
+      .n = (code >> 8) & 0xf,
+      .i = SIGN_EXTEND(code & 0xff, 8),
   };
 }
 
 Instr format_md(u16 code, Op op, int mul) {
-  return (Instr){op : op, m : (code >> 4) & 0xf, d : (code & 0xf) * mul};
+  return (Instr){.op = op, .m = (code >> 4) & 0xf, .d = (code & 0xf) * mul};
 }
 
 Instr format_nd4(u16 code, Op op, int mul) {
-  return (Instr){op : op, n : (code >> 4) & 0xf, d : (code & 0xf) * mul};
+  return (Instr){.op = op, .n = (code >> 4) & 0xf, .d = (code & 0xf) * mul};
 }
 
 Instr format_nd8(u16 code, Op op, u32 pc, int mul) {
   u32 disp = (code & 0xff) * mul;
   u32 d = (mul == 4 ? (pc & ~3) : pc) + 4 + disp;
-  return (Instr){op : op, n : (code >> 8) & 0xf, d : d};
+  return (Instr){.op = op, .n = (code >> 8) & 0xf, .d = d};
 }
 
 Instr format_i(u16 code, Op op) {
-  return (Instr){op : op, i : code & 0xff};
+  return (Instr){.op = op, .i = code & 0xff};
 }
 
 Instr format_sd(u16 code, Op op, u32 pc) {
   u32 disp = SIGN_EXTEND(code & 0xff, 8) * 2;
-  return (Instr){op : op, d : pc + 4 + disp};
+  return (Instr){.op = op, .d = pc + 4 + disp};
 }
 
 Instr format_ud(u16 code, Op op, int mul) {
-  return (Instr){op : op, d : (code & 0xff) * mul};
+  return (Instr){.op = op, .d = (code & 0xff) * mul};
 }
 
 Instr format_mova(u16 code, Op op, u32 pc, int mul) {
   u32 disp = (code & 0xff) * mul;
-  return (Instr){op : op, d : pc + 4 + disp};
+  return (Instr){.op = op, .d = pc + 4 + disp};
 }
 
 Instr format_d12(u16 code, Op op, u32 pc) {
   u32 disp = SIGN_EXTEND(code & 0xfff, 12) * 2;
-  return (Instr){op : op, d : pc + 4 + disp};
+  return (Instr){.op = op, .d = pc + 4 + disp};
 }
 
 Instr decode(u32 pc, u16 code) {
