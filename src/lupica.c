@@ -7,6 +7,26 @@
 
 #define USE_COLOR 1
 
+#define SUCCESS(x) ((x) == OK)
+#define PRINT_ERROR(...) fprintf(stderr, __VA_ARGS__)
+#define CHECK_MSG(x, ...)                                                      \
+  if (!(x)) {                                                                  \
+    PRINT_ERROR("%s:%d: ", __FILE__, __LINE__);                                \
+    PRINT_ERROR(__VA_ARGS__);                                                  \
+    goto error;                                                                \
+  }
+#define CHECK(x) do if (!(x)) { goto error; } while(0)
+#define ON_ERROR_RETURN                                                        \
+  error:                                                                       \
+  return ERROR
+#define ON_ERROR_CLOSE_FILE_AND_RETURN                                         \
+  error:                                                                       \
+  if (file) {                                                                  \
+    fclose(file);                                                              \
+  }                                                                            \
+  return ERROR
+#define UNREACHABLE(...) PRINT_ERROR(__VA_ARGS__), exit(1)
+
 #if USE_COLOR
 
 #define BLACK "\x1b[30m"
@@ -44,7 +64,7 @@ typedef int8_t s8;
 typedef int16_t s16;
 typedef int32_t s32;
 
-typedef enum { Ok, Error } Result;
+typedef enum { OK, ERROR } Result;
 
 typedef struct Buffer {
   u8 *data;
@@ -265,23 +285,20 @@ u32 read_u32(Buffer* buffer, u32 address) {
 
 Result read_file(const char* filename, Buffer* buffer) {
   FILE* file = fopen(filename, "rb");
-  if (!file) {
-    return Error;
-  }
+  CHECK_MSG(file, "unable to open file \"%s\".\n", filename);
 
   fseek(file, 0, SEEK_END);
   size_t size = ftell(file);
   fseek(file, 0, SEEK_SET);
 
-  buffer->data = malloc(size);
+  u8* data = malloc(size);
+  CHECK_MSG(fread(data, size, 1, file) == 1, "fread failed.\n");
+  fclose(file);
+  buffer->data = data;
   buffer->size = size;
 
-  size_t read = fread(buffer->data, 1, size, file);
-  if (read != size) {
-    return Error;
-  }
-
-  return Ok;
+  return OK;
+  ON_ERROR_CLOSE_FILE_AND_RETURN;
 }
 
 void print_instr(Buffer* buffer, Instr instr) {
@@ -643,6 +660,15 @@ invalid:
   return format_0(INVALID_OP);
 }
 
+void swap_bytes(Buffer* buffer) {
+  u16 *p = (u16 *)buffer->data;
+  size_t i;
+  for (i = 0; i < buffer->size / 2; ++i) {
+    u16 x = *p;
+    *p++ = (x << 8) | (x >> 8);
+  }
+}
+
 void disassemble(Buffer* buffer, size_t num_instrs, u32 address) {
   size_t i;
   for (i = 0; i < num_instrs; ++i, address += 2) {
@@ -660,14 +686,17 @@ void disassemble(Buffer* buffer, size_t num_instrs, u32 address) {
   }
 }
 
-int main() {
-  Buffer buffer;
-  if (read_file("anime.bin", &buffer) == Error) {
-    fprintf(stderr, "Couldn't read file.\n");
-    return 1;
-  }
+int main(int argc, char** argv) {
+  --argc; ++argv;
+  int result = 1;
+  CHECK_MSG(argc == 1, "no rom file given.\n");
+  const char* rom_filename = argv[0];
 
+  Buffer buffer;
+  CHECK(SUCCESS(read_file(rom_filename, &buffer)));
+  swap_bytes(&buffer);
   disassemble(&buffer, 1024*1024, 0);
 
   return 0;
+  ON_ERROR_RETURN;
 }
