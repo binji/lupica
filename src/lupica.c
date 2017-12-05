@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <memory.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -269,6 +270,13 @@ typedef struct {
 } Instr;
 
 typedef struct {
+  u32 r[16];
+  bool m, q, i[4], s, t; /* SR bits. */
+  u32 gbr, vbr, mach, macl, pr, pc;
+} Registers;
+
+typedef struct {
+  Registers regs;
 } State;
 
 typedef struct {
@@ -689,10 +697,9 @@ invalid:
 void disassemble(Emulator* e, size_t num_instrs, u32 address) {
   size_t i;
   for (i = 0; i < num_instrs; ++i, address += 2) {
-    u32 pc = 0xe0000000 + address;
-    u16 code = read_u16(e, pc);
-    printf(YELLOW "[%08x]: " WHITE "%04x ", pc, code);
-    Instr instr = decode(pc, code);
+    u16 code = read_u16(e, address);
+    printf(YELLOW "[%08x]: " WHITE "%04x ", address, code);
+    Instr instr = decode(address, code);
     if (instr.op == INVALID_OP) {
       printf(MAGENTA ".WORD %04x" WHITE, code);
     } else {
@@ -713,7 +720,7 @@ int main(int argc, char** argv) {
   CHECK(SUCCESS(read_file(rom_filename, &buffer)));
   Emulator e = {.rom = buffer};
 
-  disassemble(&e, 1024 * 1024, 0);
+  disassemble(&e, 1024 * 1024, 0xe0000000);
 
   return 0;
   ON_ERROR_RETURN;
