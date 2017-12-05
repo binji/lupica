@@ -56,10 +56,11 @@ typedef uint32_t u32;
 typedef int8_t s8;
 typedef int16_t s16;
 typedef int32_t s32;
+typedef u32 Address;
 
 typedef enum { OK, ERROR } Result;
 
-typedef struct Buffer {
+typedef struct {
   u8* data;
   size_t size;
 } Buffer;
@@ -223,13 +224,13 @@ typedef struct Buffer {
   V(XORB_I_A_R0_GBR, FORMAT_I, "XOR.B", PAIR(IMM, AT2("R0", "GBR")))      \
   V(XTRCT_RM_RN, FORMAT_NM, "XTRCT", REG_PAIR)
 
-typedef enum Op {
+typedef enum {
 #define V(name, format, op_str, fmt_str) name,
   FOREACH_OP(V)
 #undef V
 } Op;
 
-typedef enum InstrFormat {
+typedef enum {
   FORMAT_0,
   FORMAT_M,
   FORMAT_N,
@@ -244,18 +245,36 @@ typedef enum InstrFormat {
   FORMAT_NI,
 } InstrFormat;
 
-typedef struct OpInfo {
+typedef enum {
+  MEMORY_MAP_INVALID,
+  MEMORY_MAP_ROM,
+} MemoryMapType;
+
+typedef struct {
+  MemoryMapType type;
+  Address addr;
+} MemoryTypeAddressPair;
+
+typedef struct {
   InstrFormat format;
   const char* op_str;
   const char* fmt_str;
 } OpInfo;
 
-typedef struct Instr {
+typedef struct {
   Op op;
   u8 n, m;
   u8 pad;
   union { u32 d, i; };
 } Instr;
+
+typedef struct {
+} State;
+
+typedef struct {
+  State state;
+  Buffer rom;
+} Emulator;
 
 OpInfo s_op_info[] = {
 #define V(name, format, op_str, fmt_str) {format, op_str, fmt_str},
@@ -263,15 +282,38 @@ OpInfo s_op_info[] = {
 #undef V
 };
 
-u8 read_u8(Buffer* buffer, u32 address) { return buffer->data[address]; }
+MemoryTypeAddressPair map_address(Emulator* e, Address address) {
+  switch ((address >> 28) & 0xf) {
+    case 0xe:
+      if (address < 0xe0000000 + e->rom.size) {
+        return (MemoryTypeAddressPair){.type = MEMORY_MAP_ROM,
+                                       .addr = address - 0xe0000000};
+      }
+      /* Fallthrough. */
 
-u16 read_u16(Buffer* buffer, u32 address) {
-  return (buffer->data[address] << 8) | buffer->data[address + 1];
+    default:
+      return (MemoryTypeAddressPair){.type = MEMORY_MAP_INVALID};
+  }
 }
 
-u32 read_u32(Buffer* buffer, u32 address) {
-  return (buffer->data[address] << 24) | (buffer->data[address + 1] << 16) |
-         (buffer->data[address + 2] << 8) | buffer->data[address + 3];
+u8 read_u8(Emulator* e, Address address) {
+  MemoryTypeAddressPair pair = map_address(e, address);
+  switch (pair.type) {
+    case MEMORY_MAP_ROM:
+      return e->rom.data[pair.addr];
+
+    default:
+    case MEMORY_MAP_INVALID:
+      return 0xff;
+  }
+}
+
+u16 read_u16(Emulator* e, Address address) {
+  return (read_u8(e, address) << 8) | read_u8(e, address + 1);
+}
+
+u32 read_u32(Emulator* e, Address address) {
+  return (read_u16(e, address) << 16) | read_u16(e, address + 2);
 }
 
 Result read_file(const char* filename, Buffer* buffer) {
@@ -292,7 +334,7 @@ Result read_file(const char* filename, Buffer* buffer) {
   ON_ERROR_CLOSE_FILE_AND_RETURN;
 }
 
-void print_instr(Buffer* buffer, Instr instr) {
+void print_instr(Emulator* e, Instr instr) {
   OpInfo op_info = s_op_info[instr.op];
   printf(GREEN "%s" WHITE " ", op_info.op_str);
 
@@ -315,18 +357,14 @@ void print_instr(Buffer* buffer, Instr instr) {
 
   if ((op_info.format == FORMAT_D && instr.op == MOVA_A_D_PC_R0) ||
       (op_info.format == FORMAT_ND8)) {
-    /* PC relative memory access  */
-    /* TODO(binji): use proper memory map. */
-    u32 rom_start = 0xe0000000;
-    if (instr.d >= rom_start && instr.d < rom_start + buffer->size) {
-      u32 val;
-      if (instr.op == MOVW_A_D_PC_RN) {
-        val = SIGN_EXTEND(read_u16(buffer, instr.d - rom_start), 16);
-      } else {
-        val = read_u32(buffer, instr.d - rom_start);
-      }
-      printf("  ; 0x%08x", val);
+    /* PC relative memory access */
+    u32 val;
+    if (instr.op == MOVW_A_D_PC_RN) {
+      val = SIGN_EXTEND(read_u16(e, instr.d), 16);
+    } else {
+      val = read_u32(e, instr.d);
     }
+    printf("  ; 0x%08x", val);
   }
 }
 
@@ -655,17 +693,17 @@ void swap_bytes(Buffer* buffer) {
   }
 }
 
-void disassemble(Buffer* buffer, size_t num_instrs, u32 address) {
+void disassemble(Emulator* e, size_t num_instrs, u32 address) {
   size_t i;
   for (i = 0; i < num_instrs; ++i, address += 2) {
     u32 pc = 0xe0000000 + address;
-    u16 code = read_u16(buffer, address);
+    u16 code = read_u16(e, pc);
     printf(YELLOW "[%08x]: " WHITE "%04x ", pc, code);
     Instr instr = decode(pc, code);
     if (instr.op == INVALID_OP) {
       printf(MAGENTA ".WORD %04x" WHITE, code);
     } else {
-      print_instr(buffer, instr);
+      print_instr(e, instr);
     }
 
     printf("\n");
@@ -681,7 +719,9 @@ int main(int argc, char** argv) {
   Buffer buffer;
   CHECK(SUCCESS(read_file(rom_filename, &buffer)));
   swap_bytes(&buffer);
-  disassemble(&buffer, 1024 * 1024, 0);
+  Emulator e = {.rom = buffer};
+
+  disassemble(&e, 1024 * 1024, 0);
 
   return 0;
   ON_ERROR_RETURN;
