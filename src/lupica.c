@@ -296,20 +296,22 @@ MemoryTypeAddressPair map_address(Emulator* e, Address address) {
   }
 }
 
-u8 read_u8(Emulator* e, Address address) {
+u16 read_u16(Emulator* e, Address address) {
   MemoryTypeAddressPair pair = map_address(e, address);
   switch (pair.type) {
     case MEMORY_MAP_ROM:
-      return e->rom.data[pair.addr];
+      /* TODO(binji): assumes little-endian. */
+      return ((u16*)e->rom.data)[pair.addr >> 1];
 
     default:
     case MEMORY_MAP_INVALID:
-      return 0xff;
+      return 0xffff;
   }
 }
 
-u16 read_u16(Emulator* e, Address address) {
-  return (read_u8(e, address) << 8) | read_u8(e, address + 1);
+u8 read_u8(Emulator* e, Address address) {
+  u16 x = read_u16(e, address & ~1);
+  return address & 1 ? x >> 8 : x & 0xff;
 }
 
 u32 read_u32(Emulator* e, Address address) {
@@ -684,15 +686,6 @@ invalid:
   return format_0(INVALID_OP);
 }
 
-void swap_bytes(Buffer* buffer) {
-  u16* p = (u16*)buffer->data;
-  size_t i;
-  for (i = 0; i < buffer->size / 2; ++i) {
-    u16 x = *p;
-    *p++ = (x << 8) | (x >> 8);
-  }
-}
-
 void disassemble(Emulator* e, size_t num_instrs, u32 address) {
   size_t i;
   for (i = 0; i < num_instrs; ++i, address += 2) {
@@ -718,7 +711,6 @@ int main(int argc, char** argv) {
 
   Buffer buffer;
   CHECK(SUCCESS(read_file(rom_filename, &buffer)));
-  swap_bytes(&buffer);
   Emulator e = {.rom = buffer};
 
   disassemble(&e, 1024 * 1024, 0);
