@@ -7,6 +7,12 @@
 
 #define USE_COLOR 1
 
+#if USE_COLOR
+#define COLOR(x) "\x1b[" x "m"
+#else
+#define COLOR(x)
+#endif
+
 #define SUCCESS(x) ((x) == OK)
 #define PRINT_ERROR(...) fprintf(stderr, __VA_ARGS__)
 #define CHECK_MSG(x, ...)                       \
@@ -32,35 +38,17 @@
   return ERROR
 #define UNREACHABLE(...) PRINT_ERROR(__VA_ARGS__), exit(1)
 
-#if USE_COLOR
-
-#define BLACK "\x1b[30m"
-#define BLUE "\x1b[34m"
-#define BOLD "\x1b[1m"
-#define CYAN "\x1b[36m"
-#define DEFAULT "\x1b[0m"
-#define GREEN "\x1b[32m"
-#define MAGENTA "\x1b[35m"
-#define NO_BOLD "\x1b[22m"
-#define RED "\x1b[31m"
-#define WHITE "\x1b[37m"
-#define YELLOW "\x1b[33m"
-
-#else
-
-#define BLACK
-#define BLUE
-#define BOLD
-#define CYAN
-#define DEFAULT
-#define GREEN
-#define MAGENTA
-#define NO_BOLD
-#define RED
-#define WHITE
-#define YELLOW
-
-#endif
+#define BLACK COLOR("30")
+#define BLUE COLOR("34")
+#define BOLD COLOR("1")
+#define CYAN COLOR("36")
+#define DEFAULT COLOR("0")
+#define GREEN COLOR("32")
+#define MAGENTA COLOR("35")
+#define NO_BOLD COLOR("22")
+#define RED COLOR("31")
+#define WHITE COLOR("37")
+#define YELLOW COLOR("33")
 
 typedef uint8_t u8;
 typedef uint16_t u16;
