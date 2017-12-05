@@ -82,7 +82,7 @@ typedef struct {
 #define FOREACH_OP(V)                                                     \
   V(INVALID_OP, FORMAT_0, "INVALID", "")                                  \
   V(ADD_RM_RN, FORMAT_NM, "ADD", REG_PAIR)                                \
-  V(ADD_I_RN, FORMAT_NI, "ADD", PAIR(IMM, REG))                           \
+  V(ADD_I_RN, FORMAT_NI, "ADD", PAIR(SIMM, REG))                          \
   V(ADDC_RM_RN, FORMAT_NM, "ADDC", REG_PAIR)                              \
   V(ADDV_RM_RN, FORMAT_NM, "ADDV", REG_PAIR)                              \
   V(AND_RM_RN, FORMAT_NM, "AND", REG_PAIR)                                \
@@ -106,7 +106,7 @@ typedef struct {
   V(CMPPL_RN, FORMAT_NM, "CMP/PL", REG)                                   \
   V(CMPPZ_RN, FORMAT_NM, "CMP/PZ", REG)                                   \
   V(CMPSTR_RM_RN, FORMAT_NM, "CMP/STR", REG_PAIR)                         \
-  V(CMPEQ_I_R0, FORMAT_I, "CMP/EQ", PAIR(IMM, "R0"))                      \
+  V(CMPEQ_I_R0, FORMAT_I, "CMP/EQ", PAIR(SIMM, "R0"))                     \
   V(DIV0S_RM_RN, FORMAT_NM, "DIV0S", REG_PAIR)                            \
   V(DIV0U, FORMAT_0, "DIV0U", "")                                         \
   V(DIV1_RM_RN, FORMAT_NM, "DIV1", REG_PAIR)                              \
@@ -282,6 +282,24 @@ OpInfo s_op_info[] = {
 #undef V
 };
 
+Result read_file(const char* filename, Buffer* buffer) {
+  FILE* file = fopen(filename, "rb");
+  CHECK_MSG(file, "unable to open file \"%s\".\n", filename);
+
+  fseek(file, 0, SEEK_END);
+  size_t size = ftell(file);
+  fseek(file, 0, SEEK_SET);
+
+  u8* data = malloc(size);
+  CHECK_MSG(fread(data, size, 1, file) == 1, "fread failed.\n");
+  fclose(file);
+  buffer->data = data;
+  buffer->size = size;
+
+  return OK;
+  ON_ERROR_CLOSE_FILE_AND_RETURN;
+}
+
 MemoryTypeAddressPair map_address(Emulator* e, Address address) {
   switch ((address >> 28) & 0xf) {
     case 0xe:
@@ -316,24 +334,6 @@ u8 read_u8(Emulator* e, Address address) {
 
 u32 read_u32(Emulator* e, Address address) {
   return (read_u16(e, address) << 16) | read_u16(e, address + 2);
-}
-
-Result read_file(const char* filename, Buffer* buffer) {
-  FILE* file = fopen(filename, "rb");
-  CHECK_MSG(file, "unable to open file \"%s\".\n", filename);
-
-  fseek(file, 0, SEEK_END);
-  size_t size = ftell(file);
-  fseek(file, 0, SEEK_SET);
-
-  u8* data = malloc(size);
-  CHECK_MSG(fread(data, size, 1, file) == 1, "fread failed.\n");
-  fclose(file);
-  buffer->data = data;
-  buffer->size = size;
-
-  return OK;
-  ON_ERROR_CLOSE_FILE_AND_RETURN;
 }
 
 void print_instr(Emulator* e, Instr instr) {
@@ -391,11 +391,7 @@ Instr format_nmd(u16 code, Op op, int mul) {
                  .d = (code & 0xf) * mul};
 }
 
-Instr format_nui(u16 code, Op op) {
-  return (Instr){.op = op, .n = (code >> 8) & 0xf, .i = (code & 0xff)};
-}
-
-Instr format_nsi(u16 code, Op op) {
+Instr format_ni(u16 code, Op op) {
   return (Instr){
       .op = op,
       .n = (code >> 8) & 0xf,
@@ -418,6 +414,10 @@ Instr format_nd8(u16 code, Op op, u32 pc, int mul) {
 }
 
 Instr format_i(u16 code, Op op) { return (Instr){.op = op, .i = code & 0xff}; }
+
+Instr format_si(u16 code, Op op) {
+  return (Instr){.op = op, .i = SIGN_EXTEND(code & 0xff, 8)};
+}
 
 Instr format_sd(u16 code, Op op, u32 pc) {
   u32 disp = SIGN_EXTEND(code & 0xff, 8) * 2;
@@ -620,7 +620,7 @@ Instr decode(u32 pc, u16 code) {
       goto invalid;
 
     case 0x7:
-      return format_nui(code, ADD_I_RN);
+      return format_ni(code, ADD_I_RN);
 
     case 0x8:
       // clang-format off
@@ -629,7 +629,7 @@ Instr decode(u32 pc, u16 code) {
       case 0x100: return format_nd4(code, MOVW_R0_A_D_RN, 2);
       case 0x400: return format_md(code, MOVB_A_D_RM_R0, 1);
       case 0x500: return format_md(code, MOVW_A_D_RM_R0, 2);
-      case 0x800: return format_i(code, CMPEQ_I_R0);
+      case 0x800: return format_si(code, CMPEQ_I_R0);
       case 0x900: return format_sd(code, BT, pc);
       case 0xb00: return format_sd(code, BF, pc);
       case 0xd00: return format_sd(code, BTS, pc);
@@ -674,7 +674,7 @@ Instr decode(u32 pc, u16 code) {
       return format_nd8(code, MOVL_A_D_PC_RN, pc, 4);
 
     case 0xe:
-      return format_nsi(code, MOV_I_RN);
+      return format_ni(code, MOV_I_RN);
 
     case 0xf: {
       goto invalid;
