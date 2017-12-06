@@ -14,6 +14,8 @@
 #define COLOR(x)
 #endif
 
+#define ZERO_MEMORY(x) memset(&(x), 0, sizeof(x))
+
 #define SUCCESS(x) ((x) == OK)
 #define PRINT_ERROR(...) fprintf(stderr, __VA_ARGS__)
 #define CHECK_MSG(x, ...)                       \
@@ -247,14 +249,44 @@ typedef enum {
 } InstrFormat;
 
 typedef enum {
+  REGISTER_GBR = 16,
+  REGISTER_VBR,
+  REGISTER_MACH,
+  REGISTER_MACL,
+  REGISTER_PR,
+  REGISTER_SR,
+  NUM_REGISTERS,
+} Register;
+
+typedef enum {
+  STAGE_NONE,
+  STAGE_IF, /* Instruction fetch. */
+  STAGE_ID, /* Instruction decode. */
+  STAGE_EX, /* Instruction execute. */
+  STAGE_MA, /* Memory access. */
+  STAGE_WB, /* Write back. */
+} Stage;
+
+typedef enum {
   MEMORY_MAP_INVALID,
-  MEMORY_MAP_ROM,
+  MEMORY_MAP_ROM, /* 0xe0000000.. */
 } MemoryMapType;
 
 typedef struct {
   MemoryMapType type;
   Address addr;
 } MemoryTypeAddressPair;
+
+typedef enum {
+  MEMORY_ACCESS_READ_U32,
+  MEMORY_ACCESS_WRITE_U32,
+} MemoryAccessType;
+
+typedef enum {
+  STAGE_RESULT_OK,
+  STAGE_RESULT_UNIMPLEMENTED,
+  STAGE_RESULT_STALL,
+} StageResult;
 
 typedef struct {
   InstrFormat format;
@@ -270,19 +302,62 @@ typedef struct {
 } Instr;
 
 typedef struct {
-  u32 r[16];
-  bool m, q, i[4], s, t; /* SR bits. */
-  u32 gbr, vbr, mach, macl, pr, pc;
-} Registers;
+  Address addr;
+  bool active;
+} StageIF;
 
 typedef struct {
-  Registers regs;
+  u32 code;
+  bool active;
+} StageID;
+
+typedef struct {
+  Instr instr;
+  bool active;
+} StageEX;
+
+typedef struct {
+  MemoryAccessType type;
+  Address addr;
+  union {
+    u8 v8;
+    u16 v16;
+    u32 v32;
+    u32 wb_reg;
+  };
+  bool active;
+} StageMA;
+
+typedef struct {
+  u32 reg;
+  u32 val;
+  bool active;
+} StageWB;
+
+typedef struct {
+  StageIF if_;
+  StageID id;
+  StageEX ex;
+  StageMA ma;
+  StageWB wb;
+} Pipeline;
+
+typedef struct {
+  u32 reg[NUM_REGISTERS];
+  u32 pc;
+  Pipeline pipeline;
 } State;
 
 typedef struct {
   State state;
   Buffer rom;
 } Emulator;
+
+const char* s_reg_name[NUM_REGISTERS] = {
+    "r0",  "r1",  "r2",   "r3",   "r4",  "r5",  "r6",  "r7",
+    "r8",  "r9",  "r10",  "r11",  "r12", "r13", "r14", "r15",
+    "gbr", "vbr", "mach", "macl", "pr",  "sr",
+};
 
 OpInfo s_op_info[] = {
 #define V(name, format, op_str, fmt_str) {format, op_str, fmt_str},
@@ -710,17 +785,209 @@ void disassemble(Emulator* e, size_t num_instrs, u32 address) {
   }
 }
 
+void init_emulator(Emulator* e, Buffer* rom) {
+  ZERO_MEMORY(*e);
+  e->state.reg[REGISTER_SR] = 0xf0;
+  e->rom = *rom;
+  e->state.pc = 0xe0000480;
+  e->state.pipeline.if_.active = true;
+}
+
+void print_registers(Emulator* e) {
+  int i;
+  printf("   registers:\n   ");
+  for (i = 0; i < NUM_REGISTERS; ++i) {
+    printf(" %s: 0x%08x", s_reg_name[i], e->state.reg[i]);
+    if ((i + 1) % 8 == 0) {
+      printf("\n   ");
+    }
+  }
+  printf(" pc: 0x%08x\n", e->state.pc);
+}
+
+void stage_fetch(Emulator* e) {
+  if (!e->state.pipeline.if_.active) {
+    return;
+  }
+
+  u32 pc = e->state.pc;
+  u16 code = read_u16(e, pc);
+  e->state.pipeline.id.code = code;
+  e->state.pipeline.id.active = true;
+  e->state.pc += 2;
+
+  printf(CYAN "  stage_fetch:" WHITE "\n   [0x%08x] = 0x%04x\n", pc, code);
+}
+
+void stage_decode(Emulator* e) {
+  if (!e->state.pipeline.id.active) {
+    return;
+  }
+
+  u16 code = e->state.pipeline.id.code;
+  Instr instr = decode(e->state.pc - 2, code);
+  e->state.pipeline.ex.instr = instr;
+  e->state.pipeline.ex.active = true;
+
+  printf(CYAN "  stage_decode:" WHITE "\n   0x%04x => ", code);
+  print_instr(e, instr);
+  printf("\n");
+}
+
+StageResult stage_execute(Emulator* e) {
+  StageResult result = STAGE_RESULT_OK;
+  if (!e->state.pipeline.ex.active) {
+    return result;
+  }
+
+  e->state.pipeline.ex.active = false;
+  e->state.pipeline.ma.active = false;
+
+  Instr instr = e->state.pipeline.ex.instr;
+  switch (instr.op) {
+    case BRA:
+      e->state.pc = e->state.pipeline.ex.instr.d;
+      result = STAGE_RESULT_STALL;
+      break;
+
+    case LDCL_ARMP_VBR: {
+      u32 m = e->state.pipeline.ex.instr.m;
+      e->state.pipeline.ma.type = MEMORY_ACCESS_READ_U32;
+      e->state.pipeline.ma.addr = e->state.reg[m];
+      e->state.reg[m] += 4;
+      e->state.pipeline.ma.active = true;
+      e->state.pipeline.ma.wb_reg = REGISTER_VBR;
+      break;
+    }
+
+    case MOV_I_RN: {
+      u32 i = e->state.pipeline.ex.instr.i;
+      u32 n = e->state.pipeline.ex.instr.n;
+      e->state.reg[n] = i;
+      break;
+    }
+
+    case MOVL_A_D_PC_RN: {
+      u32 d = e->state.pipeline.ex.instr.d;
+      u32 n = e->state.pipeline.ex.instr.n;
+      e->state.pipeline.ma.type = MEMORY_ACCESS_READ_U32;
+      e->state.pipeline.ma.addr = d;
+      e->state.pipeline.ma.active = true;
+      e->state.pipeline.ma.wb_reg = n;
+      break;
+    }
+
+    case MOVL_ARMP_RN: {
+      u32 m = e->state.pipeline.ex.instr.m;
+      u32 n = e->state.pipeline.ex.instr.n;
+      e->state.pipeline.ma.type = MEMORY_ACCESS_READ_U32;
+      e->state.pipeline.ma.addr = e->state.reg[m];
+      e->state.reg[m] += 4;
+      e->state.pipeline.ma.active = true;
+      e->state.pipeline.ma.wb_reg = n;
+      break;
+    }
+
+    case MOVL_RM_ARN: {
+      u32 m = e->state.pipeline.ex.instr.m;
+      u32 n = e->state.pipeline.ex.instr.n;
+      e->state.pipeline.ma.type = MEMORY_ACCESS_WRITE_U32;
+      e->state.pipeline.ma.addr = e->state.reg[n];
+      e->state.pipeline.ma.v32 = e->state.reg[m];
+      e->state.pipeline.ma.active = true;
+    }
+
+    case MOVA_A_D_PC_R0:
+      e->state.reg[0] = e->state.pipeline.ex.instr.d;
+      break;
+
+    default:
+      result = STAGE_RESULT_UNIMPLEMENTED;
+      break;
+  }
+
+  printf(CYAN "  stage_execute:" WHITE "\n   ");
+  print_instr(e, instr);
+  printf("\n");
+  print_registers(e);
+
+  if (result == STAGE_RESULT_UNIMPLEMENTED) {
+    UNREACHABLE("unimplemented instruction\n");
+  }
+
+  return result;
+}
+
+void stage_memory_access(Emulator* e) {
+  if (!e->state.pipeline.ma.active) {
+    return;
+  }
+
+  e->state.pipeline.ma.active = false;
+  e->state.pipeline.wb.active = false;
+
+  printf(CYAN "  stage_memory_access:" WHITE "\n   ");
+
+  switch (e->state.pipeline.ma.type) {
+    case MEMORY_ACCESS_READ_U32: {
+      Address addr = e->state.pipeline.ma.addr;
+      u32 val = read_u32(e, addr);
+      printf("[0x%08x] => 0x%08x\n", addr, val);
+      e->state.pipeline.wb.active = true;
+      e->state.pipeline.wb.reg = e->state.pipeline.ma.wb_reg;
+      e->state.pipeline.wb.val = val;
+      break;
+    }
+
+    case MEMORY_ACCESS_WRITE_U32: {
+      Address addr = e->state.pipeline.ma.addr;
+      u32 val = e->state.pipeline.ma.v32;
+      printf("0%08x => [0x%08x]\n", val, addr);
+      // u32 val = read_u32(e, addr);
+      break;
+    }
+  }
+}
+
+void stage_writeback(Emulator* e) {
+  if (!e->state.pipeline.wb.active) {
+    return;
+  }
+
+  e->state.pipeline.wb.active = false;
+
+  u32 reg = e->state.pipeline.wb.reg;
+  u32 val = e->state.pipeline.wb.val;
+  printf(CYAN "  stage_writeback" WHITE "\n");
+  printf("   %s = 0x%08x\n", s_reg_name[reg], val);
+  e->state.reg[reg] = val;
+}
+
+void step(Emulator* e) {
+  printf("--- step ---\n");
+  stage_writeback(e);
+  stage_memory_access(e);
+  if (stage_execute(e) != STAGE_RESULT_STALL) {
+    stage_decode(e);
+    stage_fetch(e);
+  }
+}
+
 int main(int argc, char** argv) {
   --argc; ++argv;
   int result = 1;
   CHECK_MSG(argc == 1, "no rom file given.\n");
   const char* rom_filename = argv[0];
 
-  Buffer buffer;
-  CHECK(SUCCESS(read_file(rom_filename, &buffer)));
-  Emulator e = {.rom = buffer};
+  Buffer rom;
+  CHECK(SUCCESS(read_file(rom_filename, &rom)));
+  Emulator e;
+  init_emulator(&e, &rom);
 
-  disassemble(&e, 1024 * 1024, 0xe0000000);
+  int i;
+  for (i = 0; i < 13; ++i) {
+    step(&e);
+  }
 
   return 0;
   ON_ERROR_RETURN;
