@@ -865,10 +865,11 @@ void stage_fetch(Emulator* e) {
     return;
   }
 
+  StageID* id = &e->state.pipeline.id;
   u32 pc = e->state.pc;
   u16 code = read_u16(e, pc);
-  e->state.pipeline.id.code = code;
-  e->state.pipeline.id.active = true;
+  id->code = code;
+  id->active = true;
   e->state.pc += 2;
 
   print_stage("fetch");
@@ -880,13 +881,16 @@ void stage_decode(Emulator* e) {
     return;
   }
 
-  u16 code = e->state.pipeline.id.code;
-  Instr instr = decode(e->state.pc - 2, code);
-  e->state.pipeline.ex.instr = instr;
-  e->state.pipeline.ex.active = true;
+  StageID* id = &e->state.pipeline.id;
+  StageEX* ex = &e->state.pipeline.ex;
+  id->active = false;
+
+  Instr instr = decode(e->state.pc - 2, id->code);
+  ex->instr = instr;
+  ex->active = true;
 
   print_stage("decode");
-  printf("0x%04x => ", code);
+  printf("      0x%04x => ", id->code);
   print_instr(e, instr, false);
   printf("\n");
 }
@@ -897,10 +901,11 @@ StageResult stage_execute(Emulator* e) {
     return result;
   }
 
-  e->state.pipeline.ex.active = false;
-  e->state.pipeline.ma.active = false;
+  StageEX* ex = &e->state.pipeline.ex;
+  StageMA* ma = &e->state.pipeline.ma;
+  ex->active = false;
 
-  Instr instr = e->state.pipeline.ex.instr;
+  Instr instr = ex->instr;
 
   print_stage("execute");
   print_instr(e, instr, false);
@@ -908,66 +913,52 @@ StageResult stage_execute(Emulator* e) {
 
   switch (instr.op) {
     case BRA:
-      e->state.pc = e->state.pipeline.ex.instr.d;
+      e->state.pc = instr.d;
       result = STAGE_RESULT_STALL;
       print_registers(e, 1, REGISTER_PC);
       break;
 
-    case LDCL_ARMP_VBR: {
-      u32 m = e->state.pipeline.ex.instr.m;
-      e->state.pipeline.ma.type = MEMORY_ACCESS_READ_U32;
-      e->state.pipeline.ma.addr = e->state.reg[m];
-      e->state.reg[m] += 4;
-      e->state.pipeline.ma.active = true;
-      e->state.pipeline.ma.wb_reg = REGISTER_VBR;
-      print_registers(e, 1, m);
+    case LDCL_ARMP_VBR:
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_READ_U32,
+                      .addr = e->state.reg[instr.m],
+                      .wb_reg = REGISTER_VBR};
+      e->state.reg[instr.m] += 4;
+      print_registers(e, 1, instr.m);
       break;
-    }
 
-    case MOV_I_RN: {
-      u32 i = e->state.pipeline.ex.instr.i;
-      u32 n = e->state.pipeline.ex.instr.n;
-      e->state.reg[n] = i;
-      print_registers(e, 1, n);
+    case MOV_I_RN:
+      e->state.reg[instr.n] = instr.i;
+      print_registers(e, 1, instr.n);
       break;
-    }
 
-    case MOVL_A_D_PC_RN: {
-      u32 d = e->state.pipeline.ex.instr.d;
-      u32 n = e->state.pipeline.ex.instr.n;
-      e->state.pipeline.ma.type = MEMORY_ACCESS_READ_U32;
-      e->state.pipeline.ma.addr = d;
-      e->state.pipeline.ma.active = true;
-      e->state.pipeline.ma.wb_reg = n;
+    case MOVL_A_D_PC_RN:
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_READ_U32,
+                      .addr = instr.d,
+                      .wb_reg = instr.n};
       print_registers(e, 0);
       break;
-    }
 
-    case MOVL_ARMP_RN: {
-      u32 m = e->state.pipeline.ex.instr.m;
-      u32 n = e->state.pipeline.ex.instr.n;
-      e->state.pipeline.ma.type = MEMORY_ACCESS_READ_U32;
-      e->state.pipeline.ma.addr = e->state.reg[m];
-      e->state.reg[m] += 4;
-      e->state.pipeline.ma.active = true;
-      e->state.pipeline.ma.wb_reg = n;
-      print_registers(e, 1, m);
+    case MOVL_ARMP_RN:
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_READ_U32,
+                      .addr = e->state.reg[instr.m],
+                      .wb_reg = instr.n};
+      e->state.reg[instr.m] += 4;
+      print_registers(e, 1, instr.m);
       break;
-    }
 
-    case MOVL_RM_ARN: {
-      u32 m = e->state.pipeline.ex.instr.m;
-      u32 n = e->state.pipeline.ex.instr.n;
-      e->state.pipeline.ma.type = MEMORY_ACCESS_WRITE_U32;
-      e->state.pipeline.ma.addr = e->state.reg[n];
-      e->state.pipeline.ma.v32 = e->state.reg[m];
-      e->state.pipeline.ma.active = true;
+    case MOVL_RM_ARN:
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_WRITE_U32,
+                      .addr = e->state.reg[instr.n],
+                      .v32 = e->state.reg[instr.m]};
       print_registers(e, 0);
       break;
-    }
 
     case MOVA_A_D_PC_R0:
-      e->state.reg[0] = e->state.pipeline.ex.instr.d;
+      e->state.reg[0] = instr.d;
       print_registers(e, 1, 0);
       break;
 
@@ -991,7 +982,6 @@ void stage_memory_access(Emulator* e) {
   }
 
   e->state.pipeline.ma.active = false;
-  e->state.pipeline.wb.active = false;
 
   print_stage("access");
 
@@ -1009,7 +999,7 @@ void stage_memory_access(Emulator* e) {
     case MEMORY_ACCESS_WRITE_U32: {
       Address addr = e->state.pipeline.ma.addr;
       u32 val = e->state.pipeline.ma.v32;
-      printf("0%08x => [0x%08x]\n", val, addr);
+      printf("  0x%08x => [0x%08x]\n", val, addr);
       // u32 val = read_u32(e, addr);
       break;
     }
@@ -1031,7 +1021,7 @@ void stage_writeback(Emulator* e) {
 }
 
 void step(Emulator* e) {
-  printf("--- step ---\n");
+  printf(YELLOW "--- step ---\n" WHITE);
   stage_writeback(e);
   stage_memory_access(e);
   if (stage_execute(e) != STAGE_RESULT_STALL) {
