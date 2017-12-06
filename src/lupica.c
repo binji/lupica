@@ -980,12 +980,12 @@ StageResult stage_execute(Emulator* e) {
   return result;
 }
 
-void stage_memory_access(Emulator* e) {
+bool stage_memory_access(Emulator* e) {
   StageMA* ma = &e->state.pipeline.ma;
   StageWB* wb = &e->state.pipeline.wb;
 
   if (!ma->active) {
-    return;
+    return false;
   }
 
   ma->active = false;
@@ -1009,6 +1009,8 @@ void stage_memory_access(Emulator* e) {
       break;
     }
   }
+
+  return true;
 }
 
 void stage_writeback(Emulator* e) {
@@ -1030,7 +1032,11 @@ void stage_writeback(Emulator* e) {
 void step(Emulator* e) {
   printf(YELLOW "--- step ---\n" WHITE);
   stage_writeback(e);
-  stage_memory_access(e);
+  if (stage_memory_access(e) && e->state.pipeline.if_.active) {
+    /* MA and IF contention. */
+    return;
+  }
+
   if (stage_execute(e) != STAGE_RESULT_STALL) {
     stage_decode(e);
     stage_fetch(e);
@@ -1049,7 +1055,7 @@ int main(int argc, char** argv) {
   init_emulator(&e, &rom);
 
   int i;
-  for (i = 0; i < 13; ++i) {
+  for (i = 0; i < 19; ++i) {
     step(&e);
   }
 
