@@ -861,11 +861,13 @@ void print_stage(const char* name) {
 }
 
 void stage_fetch(Emulator* e) {
-  if (!e->state.pipeline.if_.active) {
+  StageIF* if_ = &e->state.pipeline.if_;
+  StageID* id = &e->state.pipeline.id;
+
+  if (!if_->active) {
     return;
   }
 
-  StageID* id = &e->state.pipeline.id;
   u32 pc = e->state.pc;
   u16 code = read_u16(e, pc);
   id->code = code;
@@ -877,12 +879,13 @@ void stage_fetch(Emulator* e) {
 }
 
 void stage_decode(Emulator* e) {
-  if (!e->state.pipeline.id.active) {
+  StageID* id = &e->state.pipeline.id;
+  StageEX* ex = &e->state.pipeline.ex;
+
+  if (!id->active) {
     return;
   }
 
-  StageID* id = &e->state.pipeline.id;
-  StageEX* ex = &e->state.pipeline.ex;
   id->active = false;
 
   Instr instr = decode(e->state.pc - 2, id->code);
@@ -897,12 +900,13 @@ void stage_decode(Emulator* e) {
 
 StageResult stage_execute(Emulator* e) {
   StageResult result = STAGE_RESULT_OK;
-  if (!e->state.pipeline.ex.active) {
+  StageEX* ex = &e->state.pipeline.ex;
+  StageMA* ma = &e->state.pipeline.ma;
+
+  if (!ex->active) {
     return result;
   }
 
-  StageEX* ex = &e->state.pipeline.ex;
-  StageMA* ma = &e->state.pipeline.ma;
   ex->active = false;
 
   Instr instr = ex->instr;
@@ -977,44 +981,47 @@ StageResult stage_execute(Emulator* e) {
 }
 
 void stage_memory_access(Emulator* e) {
-  if (!e->state.pipeline.ma.active) {
+  StageMA* ma = &e->state.pipeline.ma;
+  StageWB* wb = &e->state.pipeline.wb;
+
+  if (!ma->active) {
     return;
   }
 
-  e->state.pipeline.ma.active = false;
+  ma->active = false;
 
   print_stage("access");
 
   switch (e->state.pipeline.ma.type) {
     case MEMORY_ACCESS_READ_U32: {
-      Address addr = e->state.pipeline.ma.addr;
+      Address addr = ma->addr;
       u32 val = read_u32(e, addr);
+      *wb = (StageWB){.active = true, .reg = ma->wb_reg, .val = val};
       printf("[0x%08x] => 0x%08x\n", addr, val);
-      e->state.pipeline.wb.active = true;
-      e->state.pipeline.wb.reg = e->state.pipeline.ma.wb_reg;
-      e->state.pipeline.wb.val = val;
       break;
     }
 
     case MEMORY_ACCESS_WRITE_U32: {
-      Address addr = e->state.pipeline.ma.addr;
-      u32 val = e->state.pipeline.ma.v32;
-      printf("  0x%08x => [0x%08x]\n", val, addr);
+      Address addr = ma->addr;
+      u32 val = ma->v32;
       // u32 val = read_u32(e, addr);
+      printf("  0x%08x => [0x%08x]\n", val, addr);
       break;
     }
   }
 }
 
 void stage_writeback(Emulator* e) {
-  if (!e->state.pipeline.wb.active) {
+  StageWB* wb = &e->state.pipeline.wb;
+
+  if (!wb->active) {
     return;
   }
 
-  e->state.pipeline.wb.active = false;
+  wb->active = false;
 
-  u32 reg = e->state.pipeline.wb.reg;
-  u32 val = e->state.pipeline.wb.val;
+  u32 reg = wb->reg;
+  u32 val = wb->val;
   print_stage("writeback");
   printf("%s:%08x\n", s_reg_name[reg], val);
   e->state.reg[reg] = val;
