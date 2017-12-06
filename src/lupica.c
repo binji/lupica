@@ -74,7 +74,7 @@ typedef struct {
 #define ADDR "0x%08x"
 #define IMM "#%u"
 #define SIMM "#%d"
-#define REG "R%u"
+#define REG BOLD "r%u" NO_BOLD
 #define REG_PAIR PAIR(REG, REG)
 #define PAIR(x, y) x ", " y
 #define AT(x) "@" x
@@ -83,149 +83,149 @@ typedef struct {
 #define AT2(x, y) "@(" x ", " y ")"
 
 #define FOREACH_OP(V)                                                     \
-  V(INVALID_OP, FORMAT_0, "INVALID", "")                                  \
-  V(ADD_RM_RN, FORMAT_NM, "ADD", REG_PAIR)                                \
-  V(ADD_I_RN, FORMAT_NI, "ADD", PAIR(SIMM, REG))                          \
-  V(ADDC_RM_RN, FORMAT_NM, "ADDC", REG_PAIR)                              \
-  V(ADDV_RM_RN, FORMAT_NM, "ADDV", REG_PAIR)                              \
-  V(AND_RM_RN, FORMAT_NM, "AND", REG_PAIR)                                \
-  V(AND_I_R0, FORMAT_I, "AND", PAIR(IMM, "R0"))                           \
-  V(ANDB_I_A_R0_GBR, FORMAT_I, "AND.B", PAIR(IMM, AT2("R0", "GBR")))      \
-  V(BF, FORMAT_D, "BF", ADDR)                                             \
-  V(BFS, FORMAT_D, "BF/S", ADDR)                                          \
-  V(BRA, FORMAT_D12, "BRA", ADDR)                                         \
-  V(BRAF_RM, FORMAT_M, "BRAF", REG)                                       \
-  V(BSR, FORMAT_D12, "BSR", ADDR)                                         \
-  V(BSRF_RM, FORMAT_M, "BSRF", REG)                                       \
-  V(BT, FORMAT_D, "BT", ADDR)                                             \
-  V(BTS, FORMAT_D, "BT/S", ADDR)                                          \
-  V(CLRMAC, FORMAT_0, "CLRMAC", "")                                       \
-  V(CLRT, FORMAT_0, "CLRT", "")                                           \
-  V(CMPEQ_RM_RN, FORMAT_NM, "CMP/EQ", REG_PAIR)                           \
-  V(CMPGE_RM_RN, FORMAT_NM, "CMP/GE", REG_PAIR)                           \
-  V(CMPGT_RM_RN, FORMAT_NM, "CMP/GT", REG_PAIR)                           \
-  V(CMPHI_RM_RN, FORMAT_NM, "CMP/HI", REG_PAIR)                           \
-  V(CMPHS_RM_RN, FORMAT_NM, "CMP/HS", REG_PAIR)                           \
-  V(CMPPL_RN, FORMAT_NM, "CMP/PL", REG)                                   \
-  V(CMPPZ_RN, FORMAT_NM, "CMP/PZ", REG)                                   \
-  V(CMPSTR_RM_RN, FORMAT_NM, "CMP/STR", REG_PAIR)                         \
-  V(CMPEQ_I_R0, FORMAT_I, "CMP/EQ", PAIR(SIMM, "R0"))                     \
-  V(DIV0S_RM_RN, FORMAT_NM, "DIV0S", REG_PAIR)                            \
-  V(DIV0U, FORMAT_0, "DIV0U", "")                                         \
-  V(DIV1_RM_RN, FORMAT_NM, "DIV1", REG_PAIR)                              \
-  V(DMULSL_RM_RN, FORMAT_NM, "DMULS.L", REG_PAIR)                         \
-  V(DMULUL_RM_RN, FORMAT_NM, "DMULU.L", REG_PAIR)                         \
-  V(DT_RN, FORMAT_N, "DT", REG)                                           \
-  V(EXTSB_RM_RN, FORMAT_NM, "EXTS.B", REG_PAIR)                           \
-  V(EXTSW_RM_RN, FORMAT_NM, "EXTS.W", REG_PAIR)                           \
-  V(EXTUB_RM_RN, FORMAT_NM, "EXTU.B", REG_PAIR)                           \
-  V(EXTUW_RM_RN, FORMAT_NM, "EXTU.W", REG_PAIR)                           \
-  V(JMP_ARM, FORMAT_M, "JMP", AT(REG))                                    \
-  V(JSR_ARM, FORMAT_M, "JSR", AT(REG))                                    \
-  V(LDC_RM_SR, FORMAT_M, "LDC", PAIR(REG, "SR"))                          \
-  V(LDC_RM_GBR, FORMAT_M, "LDC", PAIR(REG, "GBR"))                        \
-  V(LDC_RM_VBR, FORMAT_M, "LDC", PAIR(REG, "VBR"))                        \
-  V(LDCL_ARMP_SR, FORMAT_M, "LDC.L", PAIR(AT_PLUS(REG), "SR"))            \
-  V(LDCL_ARMP_GBR, FORMAT_M, "LDC.L", PAIR(AT_PLUS(REG), "GBR"))          \
-  V(LDCL_ARMP_VBR, FORMAT_M, "LDC.L", PAIR(AT_PLUS(REG), "VBR"))          \
-  V(LDS_RM_MACH, FORMAT_M, "LDS", PAIR(REG, "MACH"))                      \
-  V(LDS_RM_MACL, FORMAT_M, "LDS", PAIR(REG, "MACL"))                      \
-  V(LDS_RM_PR, FORMAT_M, "LDS", PAIR(REG, "PR"))                          \
-  V(LDSL_ARMP_MACH, FORMAT_M, "LDS.L", PAIR(AT_PLUS(REG), "MACH"))        \
-  V(LDSL_ARMP_MACL, FORMAT_M, "LDS.L", PAIR(AT_PLUS(REG), "MACL"))        \
-  V(LDSL_ARMP_PR, FORMAT_M, "LDS.L", PAIR(AT_PLUS(REG), "PR"))            \
-  V(MACL_ARMP_ARNP, FORMAT_NM, "MAC.L", PAIR(AT_PLUS(REG), AT_PLUS(REG))) \
-  V(MACW_ARMP_ARNP, FORMAT_NM, "MAC.W", PAIR(AT_PLUS(REG), AT_PLUS(REG))) \
-  V(MOV_RM_RN, FORMAT_NM, "MOV", REG_PAIR)                                \
-  V(MOVB_RM_ARN, FORMAT_NM, "MOV.B", PAIR(REG, AT(REG)))                  \
-  V(MOVW_RM_ARN, FORMAT_NM, "MOV.W", PAIR(REG, AT(REG)))                  \
-  V(MOVL_RM_ARN, FORMAT_NM, "MOV.L", PAIR(REG, AT(REG)))                  \
-  V(MOVB_ARM_RN, FORMAT_NM, "MOV.B", PAIR(AT(REG), REG))                  \
-  V(MOVW_ARM_RN, FORMAT_NM, "MOV.W", PAIR(AT(REG), REG))                  \
-  V(MOVL_ARM_RN, FORMAT_NM, "MOV.L", PAIR(AT(REG), REG))                  \
-  V(MOVB_RM_AMRN, FORMAT_NM, "MOV.B", PAIR(REG, AT_MINUS(REG)))           \
-  V(MOVW_RM_AMRN, FORMAT_NM, "MOV.W", PAIR(REG, AT_MINUS(REG)))           \
-  V(MOVL_RM_AMRN, FORMAT_NM, "MOV.L", PAIR(REG, AT_MINUS(REG)))           \
-  V(MOVB_ARMP_RN, FORMAT_NM, "MOV.B", PAIR(AT_PLUS(REG), REG))            \
-  V(MOVW_ARMP_RN, FORMAT_NM, "MOV.W", PAIR(AT_PLUS(REG), REG))            \
-  V(MOVL_ARMP_RN, FORMAT_NM, "MOV.L", PAIR(AT_PLUS(REG), REG))            \
-  V(MOVB_RM_A_R0_RN, FORMAT_NM, "MOV.B", PAIR(REG, AT2("R0", REG)))       \
-  V(MOVW_RM_A_R0_RN, FORMAT_NM, "MOV.W", PAIR(REG, AT2("R0", REG)))       \
-  V(MOVL_RM_A_R0_RN, FORMAT_NM, "MOV.L", PAIR(REG, AT2("R0", REG)))       \
-  V(MOVB_A_R0_RM_RN, FORMAT_NM, "MOV.B", PAIR(AT2("R0", REG), REG))       \
-  V(MOVW_A_R0_RM_RN, FORMAT_NM, "MOV.W", PAIR(AT2("R0", REG), REG))       \
-  V(MOVL_A_R0_RM_RN, FORMAT_NM, "MOV.L", PAIR(AT2("R0", REG), REG))       \
-  V(MOV_I_RN, FORMAT_NI, "MOV", PAIR(SIMM, REG))                          \
-  V(MOVW_A_D_PC_RN, FORMAT_ND8, "MOV.W", PAIR(AT(ADDR), REG))             \
-  V(MOVL_A_D_PC_RN, FORMAT_ND8, "MOV.L", PAIR(AT(ADDR), REG))             \
-  V(MOVB_A_D_GBR_R0, FORMAT_D, "MOV.B", PAIR(AT2(DISP, "GBR"), "R0"))     \
-  V(MOVW_A_D_GBR_R0, FORMAT_D, "MOV.W", PAIR(AT2(DISP, "GBR"), "R0"))     \
-  V(MOVL_A_D_GBR_R0, FORMAT_D, "MOV.L", PAIR(AT2(DISP, "GBR"), "R0"))     \
-  V(MOVB_R0_A_D_GBR, FORMAT_D, "MOV.B", PAIR("R0", AT2(DISP, "GBR")))     \
-  V(MOVW_R0_A_D_GBR, FORMAT_D, "MOV.W", PAIR("R0", AT2(DISP, "GBR")))     \
-  V(MOVL_R0_A_D_GBR, FORMAT_D, "MOV.L", PAIR("R0", AT2(DISP, "GBR")))     \
-  V(MOVB_R0_A_D_RN, FORMAT_ND4, "MOV.B", PAIR("R0", AT2(DISP, REG)))      \
-  V(MOVW_R0_A_D_RN, FORMAT_ND4, "MOV.W", PAIR("R0", AT2(DISP, REG)))      \
-  V(MOVL_RM_A_D_RN, FORMAT_NMD, "MOV.L", PAIR(REG, AT2(DISP, REG)))       \
-  V(MOVB_A_D_RM_R0, FORMAT_MD, "MOV.B", PAIR(AT2(DISP, REG), "R0"))       \
-  V(MOVW_A_D_RM_R0, FORMAT_MD, "MOV.W", PAIR(AT2(DISP, REG), "R0"))       \
-  V(MOVL_A_D_RM_RN, FORMAT_NMD, "MOV.L", PAIR(AT2(REG, DISP), REG))       \
-  V(MOVA_A_D_PC_R0, FORMAT_D, "MOV", PAIR(ADDR, "R0"))                    \
-  V(MOVT_RN, FORMAT_N, "MOVT", REG)                                       \
-  V(MULL_RM_RN, FORMAT_NM, "MUL.L", REG_PAIR)                             \
-  V(MULSW_RM_RN, FORMAT_NM, "MULS.W", REG_PAIR)                           \
-  V(MULUW_RM_RN, FORMAT_NM, "MULU.W", REG_PAIR)                           \
-  V(NEGC_RM_RN, FORMAT_NM, "NEGC", REG_PAIR)                              \
-  V(NEG_RM_RN, FORMAT_NM, "NEG", REG_PAIR)                                \
-  V(NOP, FORMAT_0, "NOP", "")                                             \
-  V(NOT_RM_RN, FORMAT_NM, "NOT", REG_PAIR)                                \
-  V(OR_RM_RN, FORMAT_NM, "OR", REG_PAIR)                                  \
-  V(OR_I_R0, FORMAT_I, "OR", PAIR(IMM, "R0"))                             \
-  V(ORB_I_A_R0_GBR, FORMAT_I, "OR.B", PAIR(IMM, AT2("R0", "GBR")))        \
-  V(ROTCL_RN, FORMAT_N, "ROTCL", REG)                                     \
-  V(ROTCR_RN, FORMAT_N, "ROTCR", REG)                                     \
-  V(ROTL_RN, FORMAT_N, "ROTL", REG)                                       \
-  V(ROTR_RN, FORMAT_N, "ROTR", REG)                                       \
-  V(RTE, FORMAT_0, "RTE", "")                                             \
-  V(RTS, FORMAT_0, "RTS", "")                                             \
-  V(SETT, FORMAT_0, "SETT", "")                                           \
-  V(SHAL_RN, FORMAT_N, "SHAL", REG)                                       \
-  V(SHAR_RN, FORMAT_N, "SHAR", REG)                                       \
-  V(SHLL_RN, FORMAT_N, "SHLL", REG)                                       \
-  V(SHLL2_RN, FORMAT_N, "SHLL2", REG)                                     \
-  V(SHLL8_RN, FORMAT_N, "SHLL8", REG)                                     \
-  V(SHLL16_RN, FORMAT_N, "SHLL16", REG)                                   \
-  V(SHLR_RN, FORMAT_N, "SHLR", REG)                                       \
-  V(SHLR2_RN, FORMAT_N, "SHLR2", REG)                                     \
-  V(SHLR8_RN, FORMAT_N, "SHLR8", REG)                                     \
-  V(SHLR16_RN, FORMAT_N, "SHLR16", REG)                                   \
-  V(SLEEP, FORMAT_0, "SLEEP", "")                                         \
-  V(STC_SR_RN, FORMAT_N, "STC", PAIR("SR", REG))                          \
-  V(STC_GBR_RN, FORMAT_N, "STC", PAIR("GBR", REG))                        \
-  V(STC_VBR_RN, FORMAT_N, "STC", PAIR("VBR", REG))                        \
-  V(STCL_SR_AMRN, FORMAT_N, "STC.L", PAIR("SR", AT_MINUS(REG)))           \
-  V(STCL_GBR_AMRN, FORMAT_N, "STC.L", PAIR("GBR", AT_MINUS(REG)))         \
-  V(STCL_VBR_AMRN, FORMAT_N, "STC.L", PAIR("VBR", AT_MINUS(REG)))         \
-  V(STS_MACH_RN, FORMAT_N, "STS", PAIR("MACH", REG))                      \
-  V(STS_MACL_RN, FORMAT_N, "STS", PAIR("MACL", REG))                      \
-  V(STS_PR_RN, FORMAT_N, "STS", PAIR("PR", REG))                          \
-  V(STSL_MACH_AMRN, FORMAT_N, "STS.L", PAIR("MACH", AT_MINUS(REG)))       \
-  V(STSL_MACL_AMRN, FORMAT_N, "STS.L", PAIR("MACL", AT_MINUS(REG)))       \
-  V(STSL_PR_AMRN, FORMAT_N, "STS.L", PAIR("PR", AT_MINUS(REG)))           \
-  V(SUB_RM_RN, FORMAT_NM, "SUB", REG_PAIR)                                \
-  V(SUBC_RM_RN, FORMAT_NM, "SUBC", REG_PAIR)                              \
-  V(SUBV_RM_RN, FORMAT_NM, "SUBV", REG_PAIR)                              \
-  V(SWAPB_RM_RN, FORMAT_NM, "SWAP.B", REG_PAIR)                           \
-  V(SWAPW_RM_RN, FORMAT_NM, "SWAP.W", REG_PAIR)                           \
-  V(TASB_ARN, FORMAT_N, "TAS.B", AT(REG))                                 \
-  V(TRAPA_I, FORMAT_I, "TRAPA", IMM)                                      \
-  V(TST_RM_RN, FORMAT_NM, "TST", REG_PAIR)                                \
-  V(TST_I_R0, FORMAT_I, "TST", PAIR(IMM, "R0"))                           \
-  V(TSTB_I_A_R0_GBR, FORMAT_I, "TST.B", PAIR(IMM, AT2("R0", "GBR")))      \
-  V(XOR_RM_RN, FORMAT_NM, "XOR", REG_PAIR)                                \
-  V(XOR_I_R0, FORMAT_I, "XOR", PAIR(IMM, "R0"))                           \
-  V(XORB_I_A_R0_GBR, FORMAT_I, "XOR.B", PAIR(IMM, AT2("R0", "GBR")))      \
-  V(XTRCT_RM_RN, FORMAT_NM, "XTRCT", REG_PAIR)
+  V(INVALID_OP, FORMAT_0, "invalid", "")                                  \
+  V(ADD_RM_RN, FORMAT_NM, "add", REG_PAIR)                                \
+  V(ADD_I_RN, FORMAT_NI, "add", PAIR(SIMM, REG))                          \
+  V(ADDC_RM_RN, FORMAT_NM, "addc", REG_PAIR)                              \
+  V(ADDV_RM_RN, FORMAT_NM, "addv", REG_PAIR)                              \
+  V(AND_RM_RN, FORMAT_NM, "and", REG_PAIR)                                \
+  V(AND_I_R0, FORMAT_I, "and", PAIR(IMM, "R0"))                           \
+  V(ANDB_I_A_R0_GBR, FORMAT_I, "and.b", PAIR(IMM, AT2("R0", "GBR")))      \
+  V(BF, FORMAT_D, "bf", ADDR)                                             \
+  V(BFS, FORMAT_D, "bf/s", ADDR)                                          \
+  V(BRA, FORMAT_D12, "bra", ADDR)                                         \
+  V(BRAF_RM, FORMAT_M, "braf", REG)                                       \
+  V(BSR, FORMAT_D12, "bsr", ADDR)                                         \
+  V(BSRF_RM, FORMAT_M, "bsrf", REG)                                       \
+  V(BT, FORMAT_D, "bt", ADDR)                                             \
+  V(BTS, FORMAT_D, "bt/s", ADDR)                                          \
+  V(CLRMAC, FORMAT_0, "clrmac", "")                                       \
+  V(CLRT, FORMAT_0, "clrt", "")                                           \
+  V(CMPEQ_RM_RN, FORMAT_NM, "cmp/eq", REG_PAIR)                           \
+  V(CMPGE_RM_RN, FORMAT_NM, "cmp/ge", REG_PAIR)                           \
+  V(CMPGT_RM_RN, FORMAT_NM, "cmp/gt", REG_PAIR)                           \
+  V(CMPHI_RM_RN, FORMAT_NM, "cmp/hi", REG_PAIR)                           \
+  V(CMPHS_RM_RN, FORMAT_NM, "cmp/hs", REG_PAIR)                           \
+  V(CMPPL_RN, FORMAT_NM, "cmp/pl", REG)                                   \
+  V(CMPPZ_RN, FORMAT_NM, "cmp/pz", REG)                                   \
+  V(CMPSTR_RM_RN, FORMAT_NM, "cmp/str", REG_PAIR)                         \
+  V(CMPEQ_I_R0, FORMAT_I, "cmp/eq", PAIR(SIMM, "R0"))                     \
+  V(DIV0S_RM_RN, FORMAT_NM, "div0s", REG_PAIR)                            \
+  V(DIV0U, FORMAT_0, "div0u", "")                                         \
+  V(DIV1_RM_RN, FORMAT_NM, "div1", REG_PAIR)                              \
+  V(DMULSL_RM_RN, FORMAT_NM, "dmuls.l", REG_PAIR)                         \
+  V(DMULUL_RM_RN, FORMAT_NM, "dmulu.l", REG_PAIR)                         \
+  V(DT_RN, FORMAT_N, "dt", REG)                                           \
+  V(EXTSB_RM_RN, FORMAT_NM, "exts.b", REG_PAIR)                           \
+  V(EXTSW_RM_RN, FORMAT_NM, "exts.w", REG_PAIR)                           \
+  V(EXTUB_RM_RN, FORMAT_NM, "extu.b", REG_PAIR)                           \
+  V(EXTUW_RM_RN, FORMAT_NM, "extu.w", REG_PAIR)                           \
+  V(JMP_ARM, FORMAT_M, "jmp", AT(REG))                                    \
+  V(JSR_ARM, FORMAT_M, "jsr", AT(REG))                                    \
+  V(LDC_RM_SR, FORMAT_M, "ldc", PAIR(REG, "SR"))                          \
+  V(LDC_RM_GBR, FORMAT_M, "ldc", PAIR(REG, "GBR"))                        \
+  V(LDC_RM_VBR, FORMAT_M, "ldc", PAIR(REG, "VBR"))                        \
+  V(LDCL_ARMP_SR, FORMAT_M, "ldc.l", PAIR(AT_PLUS(REG), "SR"))            \
+  V(LDCL_ARMP_GBR, FORMAT_M, "ldc.l", PAIR(AT_PLUS(REG), "GBR"))          \
+  V(LDCL_ARMP_VBR, FORMAT_M, "ldc.l", PAIR(AT_PLUS(REG), "VBR"))          \
+  V(LDS_RM_MACH, FORMAT_M, "lds", PAIR(REG, "MACH"))                      \
+  V(LDS_RM_MACL, FORMAT_M, "lds", PAIR(REG, "MACL"))                      \
+  V(LDS_RM_PR, FORMAT_M, "lds", PAIR(REG, "PR"))                          \
+  V(LDSL_ARMP_MACH, FORMAT_M, "lds.l", PAIR(AT_PLUS(REG), "MACH"))        \
+  V(LDSL_ARMP_MACL, FORMAT_M, "lds.l", PAIR(AT_PLUS(REG), "MACL"))        \
+  V(LDSL_ARMP_PR, FORMAT_M, "lds.l", PAIR(AT_PLUS(REG), "PR"))            \
+  V(MACL_ARMP_ARNP, FORMAT_NM, "mac.l", PAIR(AT_PLUS(REG), AT_PLUS(REG))) \
+  V(MACW_ARMP_ARNP, FORMAT_NM, "mac.w", PAIR(AT_PLUS(REG), AT_PLUS(REG))) \
+  V(MOV_RM_RN, FORMAT_NM, "mov", REG_PAIR)                                \
+  V(MOVB_RM_ARN, FORMAT_NM, "mov.b", PAIR(REG, AT(REG)))                  \
+  V(MOVW_RM_ARN, FORMAT_NM, "mov.w", PAIR(REG, AT(REG)))                  \
+  V(MOVL_RM_ARN, FORMAT_NM, "mov.l", PAIR(REG, AT(REG)))                  \
+  V(MOVB_ARM_RN, FORMAT_NM, "mov.b", PAIR(AT(REG), REG))                  \
+  V(MOVW_ARM_RN, FORMAT_NM, "mov.w", PAIR(AT(REG), REG))                  \
+  V(MOVL_ARM_RN, FORMAT_NM, "mov.l", PAIR(AT(REG), REG))                  \
+  V(MOVB_RM_AMRN, FORMAT_NM, "mov.b", PAIR(REG, AT_MINUS(REG)))           \
+  V(MOVW_RM_AMRN, FORMAT_NM, "mov.w", PAIR(REG, AT_MINUS(REG)))           \
+  V(MOVL_RM_AMRN, FORMAT_NM, "mov.l", PAIR(REG, AT_MINUS(REG)))           \
+  V(MOVB_ARMP_RN, FORMAT_NM, "mov.b", PAIR(AT_PLUS(REG), REG))            \
+  V(MOVW_ARMP_RN, FORMAT_NM, "mov.w", PAIR(AT_PLUS(REG), REG))            \
+  V(MOVL_ARMP_RN, FORMAT_NM, "mov.l", PAIR(AT_PLUS(REG), REG))            \
+  V(MOVB_RM_A_R0_RN, FORMAT_NM, "mov.b", PAIR(REG, AT2("R0", REG)))       \
+  V(MOVW_RM_A_R0_RN, FORMAT_NM, "mov.w", PAIR(REG, AT2("R0", REG)))       \
+  V(MOVL_RM_A_R0_RN, FORMAT_NM, "mov.l", PAIR(REG, AT2("R0", REG)))       \
+  V(MOVB_A_R0_RM_RN, FORMAT_NM, "mov.b", PAIR(AT2("R0", REG), REG))       \
+  V(MOVW_A_R0_RM_RN, FORMAT_NM, "mov.w", PAIR(AT2("R0", REG), REG))       \
+  V(MOVL_A_R0_RM_RN, FORMAT_NM, "mov.l", PAIR(AT2("R0", REG), REG))       \
+  V(MOV_I_RN, FORMAT_NI, "mov", PAIR(SIMM, REG))                          \
+  V(MOVW_A_D_PC_RN, FORMAT_ND8, "mov.w", PAIR(AT(ADDR), REG))             \
+  V(MOVL_A_D_PC_RN, FORMAT_ND8, "mov.l", PAIR(AT(ADDR), REG))             \
+  V(MOVB_A_D_GBR_R0, FORMAT_D, "mov.b", PAIR(AT2(DISP, "GBR"), "R0"))     \
+  V(MOVW_A_D_GBR_R0, FORMAT_D, "mov.w", PAIR(AT2(DISP, "GBR"), "R0"))     \
+  V(MOVL_A_D_GBR_R0, FORMAT_D, "mov.l", PAIR(AT2(DISP, "GBR"), "R0"))     \
+  V(MOVB_R0_A_D_GBR, FORMAT_D, "mov.b", PAIR("R0", AT2(DISP, "GBR")))     \
+  V(MOVW_R0_A_D_GBR, FORMAT_D, "mov.w", PAIR("R0", AT2(DISP, "GBR")))     \
+  V(MOVL_R0_A_D_GBR, FORMAT_D, "mov.l", PAIR("R0", AT2(DISP, "GBR")))     \
+  V(MOVB_R0_A_D_RN, FORMAT_ND4, "mov.b", PAIR("R0", AT2(DISP, REG)))      \
+  V(MOVW_R0_A_D_RN, FORMAT_ND4, "mov.w", PAIR("R0", AT2(DISP, REG)))      \
+  V(MOVL_RM_A_D_RN, FORMAT_NMD, "mov.l", PAIR(REG, AT2(DISP, REG)))       \
+  V(MOVB_A_D_RM_R0, FORMAT_MD, "mov.b", PAIR(AT2(DISP, REG), "R0"))       \
+  V(MOVW_A_D_RM_R0, FORMAT_MD, "mov.w", PAIR(AT2(DISP, REG), "R0"))       \
+  V(MOVL_A_D_RM_RN, FORMAT_NMD, "mov.l", PAIR(AT2(REG, DISP), REG))       \
+  V(MOVA_A_D_PC_R0, FORMAT_D, "mov", PAIR(ADDR, "R0"))                    \
+  V(MOVT_RN, FORMAT_N, "movt", REG)                                       \
+  V(MULL_RM_RN, FORMAT_NM, "mul.l", REG_PAIR)                             \
+  V(MULSW_RM_RN, FORMAT_NM, "muls.w", REG_PAIR)                           \
+  V(MULUW_RM_RN, FORMAT_NM, "mulu.w", REG_PAIR)                           \
+  V(NEGC_RM_RN, FORMAT_NM, "negc", REG_PAIR)                              \
+  V(NEG_RM_RN, FORMAT_NM, "neg", REG_PAIR)                                \
+  V(NOP, FORMAT_0, "nop", "")                                             \
+  V(NOT_RM_RN, FORMAT_NM, "not", REG_PAIR)                                \
+  V(OR_RM_RN, FORMAT_NM, "or", REG_PAIR)                                  \
+  V(OR_I_R0, FORMAT_I, "or", PAIR(IMM, "R0"))                             \
+  V(ORB_I_A_R0_GBR, FORMAT_I, "or.b", PAIR(IMM, AT2("R0", "GBR")))        \
+  V(ROTCL_RN, FORMAT_N, "rotcl", REG)                                     \
+  V(ROTCR_RN, FORMAT_N, "rotcr", REG)                                     \
+  V(ROTL_RN, FORMAT_N, "rotl", REG)                                       \
+  V(ROTR_RN, FORMAT_N, "rotr", REG)                                       \
+  V(RTE, FORMAT_0, "rte", "")                                             \
+  V(RTS, FORMAT_0, "rts", "")                                             \
+  V(SETT, FORMAT_0, "sett", "")                                           \
+  V(SHAL_RN, FORMAT_N, "shal", REG)                                       \
+  V(SHAR_RN, FORMAT_N, "shar", REG)                                       \
+  V(SHLL_RN, FORMAT_N, "shll", REG)                                       \
+  V(SHLL2_RN, FORMAT_N, "shll2", REG)                                     \
+  V(SHLL8_RN, FORMAT_N, "shll8", REG)                                     \
+  V(SHLL16_RN, FORMAT_N, "shll16", REG)                                   \
+  V(SHLR_RN, FORMAT_N, "shlr", REG)                                       \
+  V(SHLR2_RN, FORMAT_N, "shlr2", REG)                                     \
+  V(SHLR8_RN, FORMAT_N, "shlr8", REG)                                     \
+  V(SHLR16_RN, FORMAT_N, "shlr16", REG)                                   \
+  V(SLEEP, FORMAT_0, "sleep", "")                                         \
+  V(STC_SR_RN, FORMAT_N, "stc", PAIR("SR", REG))                          \
+  V(STC_GBR_RN, FORMAT_N, "stc", PAIR("GBR", REG))                        \
+  V(STC_VBR_RN, FORMAT_N, "stc", PAIR("VBR", REG))                        \
+  V(STCL_SR_AMRN, FORMAT_N, "stc.l", PAIR("SR", AT_MINUS(REG)))           \
+  V(STCL_GBR_AMRN, FORMAT_N, "stc.l", PAIR("GBR", AT_MINUS(REG)))         \
+  V(STCL_VBR_AMRN, FORMAT_N, "stc.l", PAIR("VBR", AT_MINUS(REG)))         \
+  V(STS_MACH_RN, FORMAT_N, "sts", PAIR("MACH", REG))                      \
+  V(STS_MACL_RN, FORMAT_N, "sts", PAIR("MACL", REG))                      \
+  V(STS_PR_RN, FORMAT_N, "sts", PAIR("PR", REG))                          \
+  V(STSL_MACH_AMRN, FORMAT_N, "sts.l", PAIR("MACH", AT_MINUS(REG)))       \
+  V(STSL_MACL_AMRN, FORMAT_N, "sts.l", PAIR("MACL", AT_MINUS(REG)))       \
+  V(STSL_PR_AMRN, FORMAT_N, "sts.l", PAIR("PR", AT_MINUS(REG)))           \
+  V(SUB_RM_RN, FORMAT_NM, "sub", REG_PAIR)                                \
+  V(SUBC_RM_RN, FORMAT_NM, "subc", REG_PAIR)                              \
+  V(SUBV_RM_RN, FORMAT_NM, "subv", REG_PAIR)                              \
+  V(SWAPB_RM_RN, FORMAT_NM, "swap.b", REG_PAIR)                           \
+  V(SWAPW_RM_RN, FORMAT_NM, "swap.w", REG_PAIR)                           \
+  V(TASB_ARN, FORMAT_N, "tas.b", AT(REG))                                 \
+  V(TRAPA_I, FORMAT_I, "trapa", IMM)                                      \
+  V(TST_RM_RN, FORMAT_NM, "tst", REG_PAIR)                                \
+  V(TST_I_R0, FORMAT_I, "tst", PAIR(IMM, "R0"))                           \
+  V(TSTB_I_A_R0_GBR, FORMAT_I, "tst.b", PAIR(IMM, AT2("R0", "GBR")))      \
+  V(XOR_RM_RN, FORMAT_NM, "xor", REG_PAIR)                                \
+  V(XOR_I_R0, FORMAT_I, "xor", PAIR(IMM, "R0"))                           \
+  V(XORB_I_A_R0_GBR, FORMAT_I, "xor.b", PAIR(IMM, AT2("R0", "GBR")))      \
+  V(XTRCT_RM_RN, FORMAT_NM, "xtrct", REG_PAIR)
 
 typedef enum {
 #define V(name, format, op_str, fmt_str) name,
@@ -795,14 +795,14 @@ void init_emulator(Emulator* e, Buffer* rom) {
 
 void print_registers(Emulator* e) {
   int i;
-  printf("   registers:\n   ");
+  printf(" ");
   for (i = 0; i < NUM_REGISTERS; ++i) {
-    printf(" %s: 0x%08x", s_reg_name[i], e->state.reg[i]);
+    printf(" " BOLD "%4s" NO_BOLD ":%08x", s_reg_name[i], e->state.reg[i]);
     if ((i + 1) % 8 == 0) {
-      printf("\n   ");
+      printf("\n ");
     }
   }
-  printf(" pc: 0x%08x\n", e->state.pc);
+  printf("   " BOLD "pc" NO_BOLD ":%08x\n", e->state.pc);
 }
 
 void stage_fetch(Emulator* e) {
