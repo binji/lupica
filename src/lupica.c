@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <memory.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -70,17 +71,49 @@ typedef struct {
 
 #define SIGN_EXTEND(x, n) (u32)((s32)((x) << (32 - n)) >> (32 - n))
 
+#define MAKE_BOLD(x) BOLD x NO_BOLD
 #define DISP "%d"
 #define ADDR "0x%08x"
 #define IMM "#%u"
 #define SIMM "#%d"
-#define REG BOLD "r%u" NO_BOLD
+#define REG MAKE_BOLD("r%u")
+#define REG0 MAKE_BOLD("r0")
+#define GBR MAKE_BOLD("gbr")
+#define VBR MAKE_BOLD("vbr")
+#define MACH MAKE_BOLD("mach")
+#define MACL MAKE_BOLD("macl")
+#define SR MAKE_BOLD("sr")
+#define PR MAKE_BOLD("pr")
 #define REG_PAIR PAIR(REG, REG)
 #define PAIR(x, y) x ", " y
 #define AT(x) "@" x
 #define AT_MINUS(x) AT("-" REG)
 #define AT_PLUS(x) AT(REG "+")
 #define AT2(x, y) "@(" x ", " y ")"
+
+#define FOREACH_REGISTER(V) \
+  V(r0)                     \
+  V(r1)                     \
+  V(r2)                     \
+  V(r3)                     \
+  V(r4)                     \
+  V(r5)                     \
+  V(r6)                     \
+  V(r7)                     \
+  V(r8)                     \
+  V(r9)                     \
+  V(r10)                    \
+  V(r11)                    \
+  V(r12)                    \
+  V(r13)                    \
+  V(r14)                    \
+  V(r15)                    \
+  V(gbr)                    \
+  V(vbr)                    \
+  V(mach)                   \
+  V(macl)                   \
+  V(pr)                     \
+  V(sr)
 
 #define FOREACH_OP(V)                                                     \
   V(INVALID_OP, FORMAT_0, "invalid", "")                                  \
@@ -89,8 +122,8 @@ typedef struct {
   V(ADDC_RM_RN, FORMAT_NM, "addc", REG_PAIR)                              \
   V(ADDV_RM_RN, FORMAT_NM, "addv", REG_PAIR)                              \
   V(AND_RM_RN, FORMAT_NM, "and", REG_PAIR)                                \
-  V(AND_I_R0, FORMAT_I, "and", PAIR(IMM, "R0"))                           \
-  V(ANDB_I_A_R0_GBR, FORMAT_I, "and.b", PAIR(IMM, AT2("R0", "GBR")))      \
+  V(AND_I_R0, FORMAT_I, "and", PAIR(IMM, REG0))                           \
+  V(ANDB_I_A_R0_GBR, FORMAT_I, "and.b", PAIR(IMM, AT2(REG0, GBR)))        \
   V(BF, FORMAT_D, "bf", ADDR)                                             \
   V(BFS, FORMAT_D, "bf/s", ADDR)                                          \
   V(BRA, FORMAT_D12, "bra", ADDR)                                         \
@@ -109,7 +142,7 @@ typedef struct {
   V(CMPPL_RN, FORMAT_NM, "cmp/pl", REG)                                   \
   V(CMPPZ_RN, FORMAT_NM, "cmp/pz", REG)                                   \
   V(CMPSTR_RM_RN, FORMAT_NM, "cmp/str", REG_PAIR)                         \
-  V(CMPEQ_I_R0, FORMAT_I, "cmp/eq", PAIR(SIMM, "R0"))                     \
+  V(CMPEQ_I_R0, FORMAT_I, "cmp/eq", PAIR(SIMM, REG0))                     \
   V(DIV0S_RM_RN, FORMAT_NM, "div0s", REG_PAIR)                            \
   V(DIV0U, FORMAT_0, "div0u", "")                                         \
   V(DIV1_RM_RN, FORMAT_NM, "div1", REG_PAIR)                              \
@@ -122,18 +155,18 @@ typedef struct {
   V(EXTUW_RM_RN, FORMAT_NM, "extu.w", REG_PAIR)                           \
   V(JMP_ARM, FORMAT_M, "jmp", AT(REG))                                    \
   V(JSR_ARM, FORMAT_M, "jsr", AT(REG))                                    \
-  V(LDC_RM_SR, FORMAT_M, "ldc", PAIR(REG, "SR"))                          \
-  V(LDC_RM_GBR, FORMAT_M, "ldc", PAIR(REG, "GBR"))                        \
-  V(LDC_RM_VBR, FORMAT_M, "ldc", PAIR(REG, "VBR"))                        \
-  V(LDCL_ARMP_SR, FORMAT_M, "ldc.l", PAIR(AT_PLUS(REG), "SR"))            \
-  V(LDCL_ARMP_GBR, FORMAT_M, "ldc.l", PAIR(AT_PLUS(REG), "GBR"))          \
-  V(LDCL_ARMP_VBR, FORMAT_M, "ldc.l", PAIR(AT_PLUS(REG), "VBR"))          \
-  V(LDS_RM_MACH, FORMAT_M, "lds", PAIR(REG, "MACH"))                      \
-  V(LDS_RM_MACL, FORMAT_M, "lds", PAIR(REG, "MACL"))                      \
-  V(LDS_RM_PR, FORMAT_M, "lds", PAIR(REG, "PR"))                          \
-  V(LDSL_ARMP_MACH, FORMAT_M, "lds.l", PAIR(AT_PLUS(REG), "MACH"))        \
-  V(LDSL_ARMP_MACL, FORMAT_M, "lds.l", PAIR(AT_PLUS(REG), "MACL"))        \
-  V(LDSL_ARMP_PR, FORMAT_M, "lds.l", PAIR(AT_PLUS(REG), "PR"))            \
+  V(LDC_RM_SR, FORMAT_M, "ldc", PAIR(REG, SR))                            \
+  V(LDC_RM_GBR, FORMAT_M, "ldc", PAIR(REG, GBR))                          \
+  V(LDC_RM_VBR, FORMAT_M, "ldc", PAIR(REG, VBR))                          \
+  V(LDCL_ARMP_SR, FORMAT_M, "ldc.l", PAIR(AT_PLUS(REG), SR))              \
+  V(LDCL_ARMP_GBR, FORMAT_M, "ldc.l", PAIR(AT_PLUS(REG), GBR))            \
+  V(LDCL_ARMP_VBR, FORMAT_M, "ldc.l", PAIR(AT_PLUS(REG), VBR))            \
+  V(LDS_RM_MACH, FORMAT_M, "lds", PAIR(REG, MACH))                        \
+  V(LDS_RM_MACL, FORMAT_M, "lds", PAIR(REG, MACL))                        \
+  V(LDS_RM_PR, FORMAT_M, "lds", PAIR(REG, PR))                            \
+  V(LDSL_ARMP_MACH, FORMAT_M, "lds.l", PAIR(AT_PLUS(REG), MACH))          \
+  V(LDSL_ARMP_MACL, FORMAT_M, "lds.l", PAIR(AT_PLUS(REG), MACL))          \
+  V(LDSL_ARMP_PR, FORMAT_M, "lds.l", PAIR(AT_PLUS(REG), PR))              \
   V(MACL_ARMP_ARNP, FORMAT_NM, "mac.l", PAIR(AT_PLUS(REG), AT_PLUS(REG))) \
   V(MACW_ARMP_ARNP, FORMAT_NM, "mac.w", PAIR(AT_PLUS(REG), AT_PLUS(REG))) \
   V(MOV_RM_RN, FORMAT_NM, "mov", REG_PAIR)                                \
@@ -149,28 +182,28 @@ typedef struct {
   V(MOVB_ARMP_RN, FORMAT_NM, "mov.b", PAIR(AT_PLUS(REG), REG))            \
   V(MOVW_ARMP_RN, FORMAT_NM, "mov.w", PAIR(AT_PLUS(REG), REG))            \
   V(MOVL_ARMP_RN, FORMAT_NM, "mov.l", PAIR(AT_PLUS(REG), REG))            \
-  V(MOVB_RM_A_R0_RN, FORMAT_NM, "mov.b", PAIR(REG, AT2("R0", REG)))       \
-  V(MOVW_RM_A_R0_RN, FORMAT_NM, "mov.w", PAIR(REG, AT2("R0", REG)))       \
-  V(MOVL_RM_A_R0_RN, FORMAT_NM, "mov.l", PAIR(REG, AT2("R0", REG)))       \
-  V(MOVB_A_R0_RM_RN, FORMAT_NM, "mov.b", PAIR(AT2("R0", REG), REG))       \
-  V(MOVW_A_R0_RM_RN, FORMAT_NM, "mov.w", PAIR(AT2("R0", REG), REG))       \
-  V(MOVL_A_R0_RM_RN, FORMAT_NM, "mov.l", PAIR(AT2("R0", REG), REG))       \
+  V(MOVB_RM_A_R0_RN, FORMAT_NM, "mov.b", PAIR(REG, AT2(REG0, REG)))       \
+  V(MOVW_RM_A_R0_RN, FORMAT_NM, "mov.w", PAIR(REG, AT2(REG0, REG)))       \
+  V(MOVL_RM_A_R0_RN, FORMAT_NM, "mov.l", PAIR(REG, AT2(REG0, REG)))       \
+  V(MOVB_A_R0_RM_RN, FORMAT_NM, "mov.b", PAIR(AT2(REG0, REG), REG))       \
+  V(MOVW_A_R0_RM_RN, FORMAT_NM, "mov.w", PAIR(AT2(REG0, REG), REG))       \
+  V(MOVL_A_R0_RM_RN, FORMAT_NM, "mov.l", PAIR(AT2(REG0, REG), REG))       \
   V(MOV_I_RN, FORMAT_NI, "mov", PAIR(SIMM, REG))                          \
   V(MOVW_A_D_PC_RN, FORMAT_ND8, "mov.w", PAIR(AT(ADDR), REG))             \
   V(MOVL_A_D_PC_RN, FORMAT_ND8, "mov.l", PAIR(AT(ADDR), REG))             \
-  V(MOVB_A_D_GBR_R0, FORMAT_D, "mov.b", PAIR(AT2(DISP, "GBR"), "R0"))     \
-  V(MOVW_A_D_GBR_R0, FORMAT_D, "mov.w", PAIR(AT2(DISP, "GBR"), "R0"))     \
-  V(MOVL_A_D_GBR_R0, FORMAT_D, "mov.l", PAIR(AT2(DISP, "GBR"), "R0"))     \
-  V(MOVB_R0_A_D_GBR, FORMAT_D, "mov.b", PAIR("R0", AT2(DISP, "GBR")))     \
-  V(MOVW_R0_A_D_GBR, FORMAT_D, "mov.w", PAIR("R0", AT2(DISP, "GBR")))     \
-  V(MOVL_R0_A_D_GBR, FORMAT_D, "mov.l", PAIR("R0", AT2(DISP, "GBR")))     \
-  V(MOVB_R0_A_D_RN, FORMAT_ND4, "mov.b", PAIR("R0", AT2(DISP, REG)))      \
-  V(MOVW_R0_A_D_RN, FORMAT_ND4, "mov.w", PAIR("R0", AT2(DISP, REG)))      \
+  V(MOVB_A_D_GBR_R0, FORMAT_D, "mov.b", PAIR(AT2(DISP, GBR), REG0))       \
+  V(MOVW_A_D_GBR_R0, FORMAT_D, "mov.w", PAIR(AT2(DISP, GBR), REG0))       \
+  V(MOVL_A_D_GBR_R0, FORMAT_D, "mov.l", PAIR(AT2(DISP, GBR), REG0))       \
+  V(MOVB_R0_A_D_GBR, FORMAT_D, "mov.b", PAIR(REG0, AT2(DISP, GBR)))       \
+  V(MOVW_R0_A_D_GBR, FORMAT_D, "mov.w", PAIR(REG0, AT2(DISP, GBR)))       \
+  V(MOVL_R0_A_D_GBR, FORMAT_D, "mov.l", PAIR(REG0, AT2(DISP, GBR)))       \
+  V(MOVB_R0_A_D_RN, FORMAT_ND4, "mov.b", PAIR(REG0, AT2(DISP, REG)))      \
+  V(MOVW_R0_A_D_RN, FORMAT_ND4, "mov.w", PAIR(REG0, AT2(DISP, REG)))      \
   V(MOVL_RM_A_D_RN, FORMAT_NMD, "mov.l", PAIR(REG, AT2(DISP, REG)))       \
-  V(MOVB_A_D_RM_R0, FORMAT_MD, "mov.b", PAIR(AT2(DISP, REG), "R0"))       \
-  V(MOVW_A_D_RM_R0, FORMAT_MD, "mov.w", PAIR(AT2(DISP, REG), "R0"))       \
+  V(MOVB_A_D_RM_R0, FORMAT_MD, "mov.b", PAIR(AT2(DISP, REG), REG0))       \
+  V(MOVW_A_D_RM_R0, FORMAT_MD, "mov.w", PAIR(AT2(DISP, REG), REG0))       \
   V(MOVL_A_D_RM_RN, FORMAT_NMD, "mov.l", PAIR(AT2(REG, DISP), REG))       \
-  V(MOVA_A_D_PC_R0, FORMAT_D, "mov", PAIR(ADDR, "R0"))                    \
+  V(MOVA_A_D_PC_R0, FORMAT_D, "mov", PAIR(ADDR, REG0))                    \
   V(MOVT_RN, FORMAT_N, "movt", REG)                                       \
   V(MULL_RM_RN, FORMAT_NM, "mul.l", REG_PAIR)                             \
   V(MULSW_RM_RN, FORMAT_NM, "muls.w", REG_PAIR)                           \
@@ -180,8 +213,8 @@ typedef struct {
   V(NOP, FORMAT_0, "nop", "")                                             \
   V(NOT_RM_RN, FORMAT_NM, "not", REG_PAIR)                                \
   V(OR_RM_RN, FORMAT_NM, "or", REG_PAIR)                                  \
-  V(OR_I_R0, FORMAT_I, "or", PAIR(IMM, "R0"))                             \
-  V(ORB_I_A_R0_GBR, FORMAT_I, "or.b", PAIR(IMM, AT2("R0", "GBR")))        \
+  V(OR_I_R0, FORMAT_I, "or", PAIR(IMM, REG0))                             \
+  V(ORB_I_A_R0_GBR, FORMAT_I, "or.b", PAIR(IMM, AT2(REG0, GBR)))          \
   V(ROTCL_RN, FORMAT_N, "rotcl", REG)                                     \
   V(ROTCR_RN, FORMAT_N, "rotcr", REG)                                     \
   V(ROTL_RN, FORMAT_N, "rotl", REG)                                       \
@@ -200,18 +233,18 @@ typedef struct {
   V(SHLR8_RN, FORMAT_N, "shlr8", REG)                                     \
   V(SHLR16_RN, FORMAT_N, "shlr16", REG)                                   \
   V(SLEEP, FORMAT_0, "sleep", "")                                         \
-  V(STC_SR_RN, FORMAT_N, "stc", PAIR("SR", REG))                          \
-  V(STC_GBR_RN, FORMAT_N, "stc", PAIR("GBR", REG))                        \
-  V(STC_VBR_RN, FORMAT_N, "stc", PAIR("VBR", REG))                        \
-  V(STCL_SR_AMRN, FORMAT_N, "stc.l", PAIR("SR", AT_MINUS(REG)))           \
-  V(STCL_GBR_AMRN, FORMAT_N, "stc.l", PAIR("GBR", AT_MINUS(REG)))         \
-  V(STCL_VBR_AMRN, FORMAT_N, "stc.l", PAIR("VBR", AT_MINUS(REG)))         \
-  V(STS_MACH_RN, FORMAT_N, "sts", PAIR("MACH", REG))                      \
-  V(STS_MACL_RN, FORMAT_N, "sts", PAIR("MACL", REG))                      \
-  V(STS_PR_RN, FORMAT_N, "sts", PAIR("PR", REG))                          \
-  V(STSL_MACH_AMRN, FORMAT_N, "sts.l", PAIR("MACH", AT_MINUS(REG)))       \
-  V(STSL_MACL_AMRN, FORMAT_N, "sts.l", PAIR("MACL", AT_MINUS(REG)))       \
-  V(STSL_PR_AMRN, FORMAT_N, "sts.l", PAIR("PR", AT_MINUS(REG)))           \
+  V(STC_SR_RN, FORMAT_N, "stc", PAIR(SR, REG))                            \
+  V(STC_GBR_RN, FORMAT_N, "stc", PAIR(GBR, REG))                          \
+  V(STC_VBR_RN, FORMAT_N, "stc", PAIR(VBR, REG))                          \
+  V(STCL_SR_AMRN, FORMAT_N, "stc.l", PAIR(SR, AT_MINUS(REG)))             \
+  V(STCL_GBR_AMRN, FORMAT_N, "stc.l", PAIR(GBR, AT_MINUS(REG)))           \
+  V(STCL_VBR_AMRN, FORMAT_N, "stc.l", PAIR(VBR, AT_MINUS(REG)))           \
+  V(STS_MACH_RN, FORMAT_N, "sts", PAIR(MACH, REG))                        \
+  V(STS_MACL_RN, FORMAT_N, "sts", PAIR(MACL, REG))                        \
+  V(STS_PR_RN, FORMAT_N, "sts", PAIR(PR, REG))                            \
+  V(STSL_MACH_AMRN, FORMAT_N, "sts.l", PAIR(MACH, AT_MINUS(REG)))         \
+  V(STSL_MACL_AMRN, FORMAT_N, "sts.l", PAIR(MACL, AT_MINUS(REG)))         \
+  V(STSL_PR_AMRN, FORMAT_N, "sts.l", PAIR(PR, AT_MINUS(REG)))             \
   V(SUB_RM_RN, FORMAT_NM, "sub", REG_PAIR)                                \
   V(SUBC_RM_RN, FORMAT_NM, "subc", REG_PAIR)                              \
   V(SUBV_RM_RN, FORMAT_NM, "subv", REG_PAIR)                              \
@@ -220,11 +253,11 @@ typedef struct {
   V(TASB_ARN, FORMAT_N, "tas.b", AT(REG))                                 \
   V(TRAPA_I, FORMAT_I, "trapa", IMM)                                      \
   V(TST_RM_RN, FORMAT_NM, "tst", REG_PAIR)                                \
-  V(TST_I_R0, FORMAT_I, "tst", PAIR(IMM, "R0"))                           \
-  V(TSTB_I_A_R0_GBR, FORMAT_I, "tst.b", PAIR(IMM, AT2("R0", "GBR")))      \
+  V(TST_I_R0, FORMAT_I, "tst", PAIR(IMM, REG0))                           \
+  V(TSTB_I_A_R0_GBR, FORMAT_I, "tst.b", PAIR(IMM, AT2(REG0, GBR)))        \
   V(XOR_RM_RN, FORMAT_NM, "xor", REG_PAIR)                                \
-  V(XOR_I_R0, FORMAT_I, "xor", PAIR(IMM, "R0"))                           \
-  V(XORB_I_A_R0_GBR, FORMAT_I, "xor.b", PAIR(IMM, AT2("R0", "GBR")))      \
+  V(XOR_I_R0, FORMAT_I, "xor", PAIR(IMM, REG0))                           \
+  V(XORB_I_A_R0_GBR, FORMAT_I, "xor.b", PAIR(IMM, AT2(REG0, GBR)))        \
   V(XTRCT_RM_RN, FORMAT_NM, "xtrct", REG_PAIR)
 
 typedef enum {
@@ -256,6 +289,8 @@ typedef enum {
   REGISTER_PR,
   REGISTER_SR,
   NUM_REGISTERS,
+
+  REGISTER_PC, /* Dummy value used in print_registers only. */
 } Register;
 
 typedef enum {
@@ -354,9 +389,9 @@ typedef struct {
 } Emulator;
 
 const char* s_reg_name[NUM_REGISTERS] = {
-    "r0",  "r1",  "r2",   "r3",   "r4",  "r5",  "r6",  "r7",
-    "r8",  "r9",  "r10",  "r11",  "r12", "r13", "r14", "r15",
-    "gbr", "vbr", "mach", "macl", "pr",  "sr",
+#define V(name) MAKE_BOLD(#name),
+    FOREACH_REGISTER(V)
+#undef V
 };
 
 OpInfo s_op_info[] = {
@@ -419,7 +454,7 @@ u32 read_u32(Emulator* e, Address address) {
   return (read_u16(e, address) << 16) | read_u16(e, address + 2);
 }
 
-void print_instr(Emulator* e, Instr instr) {
+void print_instr(Emulator* e, Instr instr, bool print_memory) {
   OpInfo op_info = s_op_info[instr.op];
   printf(GREEN "%s" WHITE " ", op_info.op_str);
 
@@ -440,16 +475,18 @@ void print_instr(Emulator* e, Instr instr) {
   }
   // clang-format on
 
-  if ((op_info.format == FORMAT_D && instr.op == MOVA_A_D_PC_R0) ||
-      (op_info.format == FORMAT_ND8)) {
-    /* PC relative memory access */
-    u32 val;
-    if (instr.op == MOVW_A_D_PC_RN) {
-      val = SIGN_EXTEND(read_u16(e, instr.d), 16);
-    } else {
-      val = read_u32(e, instr.d);
+  if (print_memory) {
+    if ((op_info.format == FORMAT_D && instr.op == MOVA_A_D_PC_R0) ||
+        (op_info.format == FORMAT_ND8)) {
+      /* PC relative memory access */
+      u32 val;
+      if (instr.op == MOVW_A_D_PC_RN) {
+        val = SIGN_EXTEND(read_u16(e, instr.d), 16);
+      } else {
+        val = read_u32(e, instr.d);
+      }
+      printf("  ; 0x%08x", val);
     }
-    printf("  ; 0x%08x", val);
   }
 }
 
@@ -778,7 +815,7 @@ void disassemble(Emulator* e, size_t num_instrs, u32 address) {
     if (instr.op == INVALID_OP) {
       printf(MAGENTA ".WORD %04x" WHITE, code);
     } else {
-      print_instr(e, instr);
+      print_instr(e, instr, true);
     }
 
     printf("\n");
@@ -793,16 +830,34 @@ void init_emulator(Emulator* e, Buffer* rom) {
   e->state.pipeline.if_.active = true;
 }
 
-void print_registers(Emulator* e) {
-  int i;
-  printf(" ");
-  for (i = 0; i < NUM_REGISTERS; ++i) {
-    printf(" " BOLD "%4s" NO_BOLD ":%08x", s_reg_name[i], e->state.reg[i]);
-    if ((i + 1) % 8 == 0) {
-      printf("\n ");
-    }
+void print_registers(Emulator* e, int n, ...) {
+  if (n == 0) {
+    return;
   }
-  printf("   " BOLD "pc" NO_BOLD ":%08x\n", e->state.pc);
+
+  printf("  ; ");
+
+  va_list args;
+  va_start(args, n);
+  int i;
+  for (i = 0; i < n; ++i) {
+    int reg = va_arg(args, int);
+    const char* name;
+    u32 val;
+    if (reg == REGISTER_PC) {
+      name = MAKE_BOLD("pc");
+      val = e->state.pc;
+    } else {
+      name = s_reg_name[reg];
+      val = e->state.reg[reg];
+    }
+    printf("%s:%08x ", name, val);
+  }
+  va_end(args);
+}
+
+void print_stage(const char* name) {
+  printf(CYAN "%9s:" WHITE " ", name);
 }
 
 void stage_fetch(Emulator* e) {
@@ -816,7 +871,8 @@ void stage_fetch(Emulator* e) {
   e->state.pipeline.id.active = true;
   e->state.pc += 2;
 
-  printf(CYAN "  stage_fetch:" WHITE "\n   [0x%08x] = 0x%04x\n", pc, code);
+  print_stage("fetch");
+  printf("[0x%08x] => 0x%04x\n", pc, code);
 }
 
 void stage_decode(Emulator* e) {
@@ -829,8 +885,9 @@ void stage_decode(Emulator* e) {
   e->state.pipeline.ex.instr = instr;
   e->state.pipeline.ex.active = true;
 
-  printf(CYAN "  stage_decode:" WHITE "\n   0x%04x => ", code);
-  print_instr(e, instr);
+  print_stage("decode");
+  printf("0x%04x => ", code);
+  print_instr(e, instr, false);
   printf("\n");
 }
 
@@ -844,10 +901,16 @@ StageResult stage_execute(Emulator* e) {
   e->state.pipeline.ma.active = false;
 
   Instr instr = e->state.pipeline.ex.instr;
+
+  print_stage("execute");
+  print_instr(e, instr, false);
+  printf("  ");
+
   switch (instr.op) {
     case BRA:
       e->state.pc = e->state.pipeline.ex.instr.d;
       result = STAGE_RESULT_STALL;
+      print_registers(e, 1, REGISTER_PC);
       break;
 
     case LDCL_ARMP_VBR: {
@@ -857,6 +920,7 @@ StageResult stage_execute(Emulator* e) {
       e->state.reg[m] += 4;
       e->state.pipeline.ma.active = true;
       e->state.pipeline.ma.wb_reg = REGISTER_VBR;
+      print_registers(e, 1, m);
       break;
     }
 
@@ -864,6 +928,7 @@ StageResult stage_execute(Emulator* e) {
       u32 i = e->state.pipeline.ex.instr.i;
       u32 n = e->state.pipeline.ex.instr.n;
       e->state.reg[n] = i;
+      print_registers(e, 1, n);
       break;
     }
 
@@ -874,6 +939,7 @@ StageResult stage_execute(Emulator* e) {
       e->state.pipeline.ma.addr = d;
       e->state.pipeline.ma.active = true;
       e->state.pipeline.ma.wb_reg = n;
+      print_registers(e, 0);
       break;
     }
 
@@ -885,6 +951,7 @@ StageResult stage_execute(Emulator* e) {
       e->state.reg[m] += 4;
       e->state.pipeline.ma.active = true;
       e->state.pipeline.ma.wb_reg = n;
+      print_registers(e, 1, m);
       break;
     }
 
@@ -895,10 +962,13 @@ StageResult stage_execute(Emulator* e) {
       e->state.pipeline.ma.addr = e->state.reg[n];
       e->state.pipeline.ma.v32 = e->state.reg[m];
       e->state.pipeline.ma.active = true;
+      print_registers(e, 0);
+      break;
     }
 
     case MOVA_A_D_PC_R0:
       e->state.reg[0] = e->state.pipeline.ex.instr.d;
+      print_registers(e, 1, 0);
       break;
 
     default:
@@ -906,10 +976,7 @@ StageResult stage_execute(Emulator* e) {
       break;
   }
 
-  printf(CYAN "  stage_execute:" WHITE "\n   ");
-  print_instr(e, instr);
   printf("\n");
-  print_registers(e);
 
   if (result == STAGE_RESULT_UNIMPLEMENTED) {
     UNREACHABLE("unimplemented instruction\n");
@@ -926,7 +993,7 @@ void stage_memory_access(Emulator* e) {
   e->state.pipeline.ma.active = false;
   e->state.pipeline.wb.active = false;
 
-  printf(CYAN "  stage_memory_access:" WHITE "\n   ");
+  print_stage("access");
 
   switch (e->state.pipeline.ma.type) {
     case MEMORY_ACCESS_READ_U32: {
@@ -958,8 +1025,8 @@ void stage_writeback(Emulator* e) {
 
   u32 reg = e->state.pipeline.wb.reg;
   u32 val = e->state.pipeline.wb.val;
-  printf(CYAN "  stage_writeback" WHITE "\n");
-  printf("   %s = 0x%08x\n", s_reg_name[reg], val);
+  print_stage("writeback");
+  printf("%s:%08x\n", s_reg_name[reg], val);
   e->state.reg[reg] = val;
 }
 
