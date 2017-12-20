@@ -572,8 +572,8 @@ Instr decode(u32 pc, u16 code) {
         break;
       case 0x3:
         switch (code & 0xf0) {
-          case 0x00: return format_nm(code, BSRF_RM);
-          case 0x20: return format_nm(code, BRAF_RM);
+          case 0x00: return format_m(code, BSRF_RM);
+          case 0x20: return format_m(code, BRAF_RM);
         }
         break;
       case 0x4: return format_nm(code, MOVB_RM_A_R0_RN);
