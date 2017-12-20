@@ -290,7 +290,7 @@ typedef enum {
   REGISTER_SR,
   NUM_REGISTERS,
 
-  REGISTER_PC, /* Dummy value used in print_registers only. */
+  REGISTER_PC,   /* Dummy value used in print_registers only. */
 } Register;
 
 typedef enum {
@@ -980,12 +980,13 @@ StageResult stage_execute(Emulator* e) {
   return result;
 }
 
-bool stage_memory_access(Emulator* e) {
+StageResult stage_memory_access(Emulator* e) {
+  StageResult result = STAGE_RESULT_OK;
   StageMA* ma = &e->state.pipeline.ma;
   StageWB* wb = &e->state.pipeline.wb;
 
   if (!ma->active) {
-    return false;
+    return result;
   }
 
   ma->active = false;
@@ -1010,7 +1011,12 @@ bool stage_memory_access(Emulator* e) {
     }
   }
 
-  return true;
+  if (e->state.pipeline.if_.active) {
+    /* MA and IF contention. */
+    result = STAGE_RESULT_STALL;
+  }
+
+  return result;
 }
 
 void stage_writeback(Emulator* e) {
@@ -1032,15 +1038,16 @@ void stage_writeback(Emulator* e) {
 void step(Emulator* e) {
   printf(YELLOW "--- step ---\n" WHITE);
   stage_writeback(e);
-  if (stage_memory_access(e) && e->state.pipeline.if_.active) {
-    /* MA and IF contention. */
+  if (stage_memory_access(e) == STAGE_RESULT_STALL) {
     return;
   }
 
-  if (stage_execute(e) != STAGE_RESULT_STALL) {
-    stage_decode(e);
-    stage_fetch(e);
+  if (stage_execute(e) == STAGE_RESULT_STALL) {
+    return;
   }
+
+  stage_decode(e);
+  stage_fetch(e);
 }
 
 int main(int argc, char** argv) {
