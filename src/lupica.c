@@ -916,12 +916,14 @@ StageResult stage_execute(Emulator* e) {
   printf("  ");
 
   switch (instr.op) {
+    /* bra */
     case BRA:
       e->state.pc = instr.d;
       result = STAGE_RESULT_STALL;
       print_registers(e, 1, REGISTER_PC);
       break;
 
+    /* ldc.l @rm+, vbr */
     case LDCL_ARMP_VBR:
       *ma = (StageMA){.active = true,
                       .type = MEMORY_ACCESS_READ_U32,
@@ -931,19 +933,20 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, instr.m);
       break;
 
+    /* mov #i, rn */
     case MOV_I_RN:
       e->state.reg[instr.n] = instr.i;
-      print_registers(e, 1, instr.n);
       break;
 
+    /* mov.l @(disp, pc), rn */
     case MOVL_A_D_PC_RN:
       *ma = (StageMA){.active = true,
                       .type = MEMORY_ACCESS_READ_U32,
                       .addr = instr.d,
                       .wb_reg = instr.n};
-      print_registers(e, 0);
       break;
 
+    /* mov.l @rm+, rn */
     case MOVL_ARMP_RN:
       *ma = (StageMA){.active = true,
                       .type = MEMORY_ACCESS_READ_U32,
@@ -953,14 +956,16 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, instr.m);
       break;
 
+    /* mov.l rm, @rn */
     case MOVL_RM_ARN:
       *ma = (StageMA){.active = true,
                       .type = MEMORY_ACCESS_WRITE_U32,
                       .addr = e->state.reg[instr.n],
                       .v32 = e->state.reg[instr.m]};
-      print_registers(e, 0);
+      print_registers(e, 2, instr.m, instr.n);
       break;
 
+    /* mova @(disp, pc), r0 */
     case MOVA_A_D_PC_R0:
       e->state.reg[0] = instr.d;
       print_registers(e, 1, 0);
