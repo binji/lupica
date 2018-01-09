@@ -290,7 +290,9 @@ typedef enum {
   REGISTER_SR,
   NUM_REGISTERS,
 
-  REGISTER_PC,   /* Dummy value used in print_registers only. */
+  /* Dummy value used in print_registers only. */
+  REGISTER_PC,
+  REGISTER_ADDR,
 } Register;
 
 typedef enum {
@@ -877,12 +879,21 @@ void print_registers(Emulator* e, int n, ...) {
     int reg = va_arg(args, int);
     const char* name;
     u32 val;
-    if (reg == REGISTER_PC) {
-      name = MAKE_BOLD("pc");
-      val = e->state.pc;
-    } else {
-      name = s_reg_name[reg];
-      val = e->state.reg[reg];
+    switch (reg) {
+      case REGISTER_PC:
+        name = MAKE_BOLD("pc");
+        val = e->state.pc;
+        break;
+
+      case REGISTER_ADDR:
+        name = MAKE_BOLD("addr");
+        val = va_arg(args, u32);
+        break;
+
+      default:
+        name = s_reg_name[reg];
+        val = e->state.reg[reg];
+        break;
     }
     printf("%s:%08x ", name, val);
   }
@@ -1045,10 +1056,16 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 2, instr.m, instr.n);
       break;
 
+    /* mov.w @rm, rn */
+    case MOVW_ARM_RN:
+      *ma = stage_ma_read_u16(regs[instr.m], instr.n);
+      print_registers(e, 1, instr.m);
+      break;
+
     /* mov.l @rm, rn */
     case MOVL_ARM_RN:
       *ma = stage_ma_read_u32(regs[instr.m], instr.n);
-      print_registers(e, 2, instr.m, instr.n);
+      print_registers(e, 1, instr.m);
       break;
 
     /* mov.l rm, @-rn */
@@ -1086,10 +1103,12 @@ StageResult stage_execute(Emulator* e) {
       break;
 
     /* mov.w r0, @(disp, gbr) */
-    case MOVW_R0_A_D_GBR:
-      *ma = stage_ma_write_u16(regs[REGISTER_GBR] + (instr.d << 1), regs[0]);
-      print_registers(e, 2, 0, REGISTER_GBR);
+    case MOVW_R0_A_D_GBR: {
+      u32 addr = regs[REGISTER_GBR] + (instr.d << 1);
+      *ma = stage_ma_write_u16(addr, regs[0]);
+      print_registers(e, 2, 0, REGISTER_ADDR, addr);
       break;
+    }
 
     /* mova @(disp, pc), r0 */
     case MOVA_A_D_PC_R0:
@@ -1239,7 +1258,7 @@ int main(int argc, char** argv) {
   init_emulator(&e, &rom);
 
   int i;
-  for (i = 0; i < 200; ++i) {
+  for (i = 0; i < 1000; ++i) {
     step(&e);
   }
 
