@@ -304,7 +304,8 @@ typedef enum {
 
 typedef enum {
   MEMORY_MAP_INVALID,
-  MEMORY_MAP_ROM, /* 0xe0000000.. */
+  MEMORY_MAP_BIOS, /* 0x00000000..0x00001000 (?) */
+  MEMORY_MAP_ROM,  /* 0x0e000000..0x0e000000 */
 } MemoryMapType;
 
 typedef struct {
@@ -421,21 +422,40 @@ Result read_file(const char* filename, Buffer* buffer) {
 
 MemoryTypeAddressPair map_address(Emulator* e, Address address) {
   switch ((address >> 24) & 0xf) {
+    case 0x0:
+      /* TODO(binji): Seems to be BIOS routines; figure out what these do and
+       * how big this region is. */
+      if (address < 0x1000) {
+        return (MemoryTypeAddressPair){.type = MEMORY_MAP_BIOS,
+                                       .addr = address};
+      }
+      goto invalid;
+
     case 0xe:
       if (address < 0x0e000000 + e->rom.size) {
         return (MemoryTypeAddressPair){.type = MEMORY_MAP_ROM,
                                        .addr = address - 0x0e000000};
       }
-      /* Fallthrough. */
+      goto invalid;
 
+    invalid:
     default:
       return (MemoryTypeAddressPair){.type = MEMORY_MAP_INVALID};
   }
 }
 
 u16 read_u16(Emulator* e, Address address) {
+  /* HACK: just RTS/NOP for any called routine. */
+  static u16 s_bios[0x1000] = {
+    [0x668] = 0x000b,
+    [0x66a] = 0x0009,
+  };
+
   MemoryTypeAddressPair pair = map_address(e, address);
   switch (pair.type) {
+    case MEMORY_MAP_BIOS:
+      return s_bios[pair.addr];
+
     case MEMORY_MAP_ROM:
       /* TODO(binji): assumes little-endian. */
       return ((u16*)e->rom.data)[pair.addr >> 1];
@@ -1021,6 +1041,12 @@ StageResult stage_execute(Emulator* e) {
 
     /* nop */
     case NOP:
+      break;
+
+    /* rts */
+    case RTS:
+      e->state.pc = e->state.reg[REGISTER_PR];
+      print_registers(e, 1, REGISTER_PC);
       break;
 
     /* sts.l pr, @-rn */
