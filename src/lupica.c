@@ -314,6 +314,8 @@ typedef struct {
 } MemoryTypeAddressPair;
 
 typedef enum {
+  MEMORY_ACCESS_READ_U16,
+  MEMORY_ACCESS_WRITE_U16,
   MEMORY_ACCESS_READ_U32,
   MEMORY_ACCESS_WRITE_U32,
 } MemoryAccessType;
@@ -997,9 +999,26 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, instr.m);
       break;
 
+    /* mov.w rm, @rn */
+    case MOVW_RM_ARN:
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_WRITE_U16,
+                      .addr = e->state.reg[instr.n],
+                      .v16 = e->state.reg[instr.m]};
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
     /* mov #i, rn */
     case MOV_I_RN:
       e->state.reg[instr.n] = instr.i;
+      break;
+
+    /* mov.w @(disp, pc), rn */
+    case MOVW_A_D_PC_RN:
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_READ_U16,
+                      .addr = instr.d,
+                      .wb_reg = instr.n};
       break;
 
     /* mov.l @(disp, pc), rn */
@@ -1023,15 +1042,11 @@ StageResult stage_execute(Emulator* e) {
     /* mov.l rm, @-rn */
     case MOVL_RM_AMRN:
       e->state.reg[instr.n] -= 4;
-      *ma = (StageMA){.active = true,
-                      .type = MEMORY_ACCESS_WRITE_U32,
-                      .addr = e->state.reg[instr.n],
-                      .v32 = e->state.reg[instr.m]};
-      print_registers(e, 2, instr.m, instr.n);
-      break;
+      goto movl_rm_arn;
 
     /* mov.l rm, @rn */
     case MOVL_RM_ARN:
+    movl_rm_arn:
       *ma = (StageMA){.active = true,
                       .type = MEMORY_ACCESS_WRITE_U32,
                       .addr = e->state.reg[instr.n],
@@ -1093,19 +1108,33 @@ StageResult stage_memory_access(Emulator* e) {
 
   print_stage("access");
 
+  Address addr = ma->addr;
+
   switch (e->state.pipeline.ma.type) {
+    case MEMORY_ACCESS_READ_U16: {
+      u32 val = SIGN_EXTEND(read_u16(e, addr), 16);
+      *wb = (StageWB){.active = true, .reg = ma->wb_reg, .val = val};
+      printf("[0x%08x] => 0x%08x\n", addr, val);
+      break;
+    }
+
     case MEMORY_ACCESS_READ_U32: {
-      Address addr = ma->addr;
       u32 val = read_u32(e, addr);
       *wb = (StageWB){.active = true, .reg = ma->wb_reg, .val = val};
       printf("[0x%08x] => 0x%08x\n", addr, val);
       break;
     }
 
+    case MEMORY_ACCESS_WRITE_U16: {
+      u16 val = ma->v16;
+      // write_u16(e, addr, val);
+      printf("  0x%04x => [0x%08x]\n", val, addr);
+      break;
+    }
+
     case MEMORY_ACCESS_WRITE_U32: {
-      Address addr = ma->addr;
       u32 val = ma->v32;
-      // u32 val = read_u32(e, addr);
+      // write_u32(e, addr, val);
       printf("  0x%08x => [0x%08x]\n", val, addr);
       break;
     }
