@@ -967,10 +967,16 @@ StageResult stage_execute(Emulator* e) {
   switch (instr.op) {
     /* bra */
     case BRA:
+    bra:
       e->state.pc = instr.d;
       result = STAGE_RESULT_STALL;
       print_registers(e, 1, REGISTER_PC);
       break;
+
+    /* bsr */
+    case BSR:
+      e->state.reg[REGISTER_PR] = e->state.pc;
+      goto bra;
 
     /* jsr @rm */
     case JSR_ARM:
