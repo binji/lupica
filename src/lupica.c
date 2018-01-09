@@ -321,6 +321,7 @@ typedef enum {
   STAGE_RESULT_OK,
   STAGE_RESULT_UNIMPLEMENTED,
   STAGE_RESULT_STALL,
+  STAGE_RESULT_WRITEBACK_AS_EXECUTE,
 } StageResult;
 
 typedef struct {
@@ -889,8 +890,7 @@ void stage_decode(Emulator* e) {
   id->active = false;
 
   Instr instr = decode(e->state.pc - 2, id->code);
-  ex->instr = instr;
-  ex->active = true;
+  *ex = (StageEX){.active = true, .instr = instr};
 
   print_stage("decode");
   printf("      0x%04x => ", id->code);
@@ -930,6 +930,7 @@ StageResult stage_execute(Emulator* e) {
                       .addr = e->state.reg[instr.m],
                       .wb_reg = REGISTER_VBR};
       e->state.reg[instr.m] += 4;
+      result = STAGE_RESULT_STALL;
       print_registers(e, 1, instr.m);
       break;
 
@@ -987,6 +988,7 @@ StageResult stage_execute(Emulator* e) {
 
 StageResult stage_memory_access(Emulator* e) {
   StageResult result = STAGE_RESULT_OK;
+  StageEX* ex = &e->state.pipeline.ex;
   StageMA* ma = &e->state.pipeline.ma;
   StageWB* wb = &e->state.pipeline.wb;
 
@@ -1024,31 +1026,41 @@ StageResult stage_memory_access(Emulator* e) {
   return result;
 }
 
-void stage_writeback(Emulator* e) {
+StageResult stage_writeback(Emulator* e) {
   StageWB* wb = &e->state.pipeline.wb;
 
   if (!wb->active) {
-    return;
+    return STAGE_RESULT_OK;
   }
 
   wb->active = false;
 
   u32 reg = wb->reg;
   u32 val = wb->val;
-  print_stage("writeback");
-  printf("%s:%08x\n", s_reg_name[reg], val);
   e->state.reg[reg] = val;
+
+  if (reg == REGISTER_GBR || reg == REGISTER_VBR || reg == REGISTER_SR) {
+    /* Writing to GBR, VBR and SR happen in execute stage; fake that here. */
+    print_stage("execute*");
+    printf("%s:%08x\n", s_reg_name[reg], val);
+    return STAGE_RESULT_WRITEBACK_AS_EXECUTE;
+  } else {
+    print_stage("writeback");
+    printf("%s:%08x\n", s_reg_name[reg], val);
+    return STAGE_RESULT_OK;
+  }
 }
 
 void step(Emulator* e) {
   printf(YELLOW "--- step ---\n" WHITE);
-  stage_writeback(e);
-  if (stage_memory_access(e) == STAGE_RESULT_STALL) {
-    return;
-  }
+  if (stage_writeback(e) != STAGE_RESULT_WRITEBACK_AS_EXECUTE) {
+    if (stage_memory_access(e) == STAGE_RESULT_STALL) {
+      return;
+    }
 
-  if (stage_execute(e) == STAGE_RESULT_STALL) {
-    return;
+    if (stage_execute(e) == STAGE_RESULT_STALL) {
+      return;
+    }
   }
 
   stage_decode(e);
@@ -1067,7 +1079,7 @@ int main(int argc, char** argv) {
   init_emulator(&e, &rom);
 
   int i;
-  for (i = 0; i < 19; ++i) {
+  for (i = 0; i < 100; ++i) {
     step(&e);
   }
 
