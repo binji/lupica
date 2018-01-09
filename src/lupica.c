@@ -994,6 +994,16 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, instr.m);
       break;
 
+    /* mov.l rm, @-rn */
+    case MOVL_RM_AMRN:
+      e->state.reg[instr.n] -= 4;
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_WRITE_U32,
+                      .addr = e->state.reg[instr.n],
+                      .v32 = e->state.reg[instr.m]};
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
     /* mov.l rm, @rn */
     case MOVL_RM_ARN:
       *ma = (StageMA){.active = true,
