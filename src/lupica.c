@@ -952,6 +952,14 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, REGISTER_PC);
       break;
 
+    /* jsr @rm */
+    case JSR_ARM:
+      e->state.reg[REGISTER_PR] = e->state.pc;
+      e->state.pc = e->state.reg[instr.m];
+      result = STAGE_RESULT_STALL;
+      print_registers(e, 2, REGISTER_PC, REGISTER_PR);
+      break;
+
     /* ldc.l @rm+, vbr */
     case LDCL_ARMP_VBR:
       *ma = (StageMA){.active = true,
@@ -1009,7 +1017,7 @@ StageResult stage_execute(Emulator* e) {
   printf("\n");
 
   if (result == STAGE_RESULT_UNIMPLEMENTED) {
-    UNREACHABLE("unimplemented instruction\n");
+    UNREACHABLE("unimplemented instruction '%s'\n", s_op_info[instr.op].op_str);
   }
 
   return result;
