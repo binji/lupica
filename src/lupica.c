@@ -455,6 +455,16 @@ u32 read_u32(Emulator* e, Address address) {
   return (read_u16(e, address) << 16) | read_u16(e, address + 2);
 }
 
+bool instr_has_n(InstrFormat format) {
+  return format == FORMAT_N || format == FORMAT_NM || format == FORMAT_NMD ||
+         format == FORMAT_ND4 || format == FORMAT_ND8 || format == FORMAT_NI;
+}
+
+bool instr_has_m(InstrFormat format) {
+  return format == FORMAT_M || format == FORMAT_NM || format == FORMAT_MD ||
+         format == FORMAT_NMD;
+}
+
 void print_instr(Emulator* e, Instr instr, bool print_memory) {
   OpInfo op_info = s_op_info[instr.op];
   printf(GREEN "%s" WHITE " ", op_info.op_str);
@@ -902,6 +912,7 @@ StageResult stage_execute(Emulator* e) {
   StageResult result = STAGE_RESULT_OK;
   StageEX* ex = &e->state.pipeline.ex;
   StageMA* ma = &e->state.pipeline.ma;
+  StageWB* wb = &e->state.pipeline.wb;
 
   if (!ex->active) {
     return result;
@@ -914,6 +925,24 @@ StageResult stage_execute(Emulator* e) {
   print_stage("execute");
   print_instr(e, instr, false);
   printf("  ");
+
+  if (wb->active) {
+    InstrFormat format = s_op_info[instr.op].format;
+    /* If the following writeback stage will write to the same destination
+     * register as this instruction, we have to stall. */
+    if (instr_has_n(format) && wb->reg == instr.n) {
+      return STAGE_RESULT_STALL;
+    }
+
+    /* If the following writeback stage will write to a register that will be
+     * used below, it appears to not stall, and instead will forward that
+     * value early. This isn't mentioned explicitly, but the documentation says
+     * that the stall occurs when the "destination (not the source) of
+     * instruction 2" uses the same register as the load. */
+    if (instr_has_m(format) && wb->reg == instr.m) {
+      e->state.reg[instr.m] = wb->val;
+    }
+  }
 
   switch (instr.op) {
     /* bra */
@@ -1018,6 +1047,10 @@ StageResult stage_memory_access(Emulator* e) {
     }
   }
 
+  /* For now, this will always stall since the IF stage is always active. It's
+   * not supposed to stall if the next instruction is already fetched. This
+   * happens when fetching instructions from on-chip ROM/cache, so it can fetch
+   * two instructions (32-bits) instead of one (16-bits). */
   if (e->state.pipeline.if_.active) {
     /* MA and IF contention. */
     result = STAGE_RESULT_STALL;
