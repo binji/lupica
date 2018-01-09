@@ -420,11 +420,11 @@ Result read_file(const char* filename, Buffer* buffer) {
 }
 
 MemoryTypeAddressPair map_address(Emulator* e, Address address) {
-  switch ((address >> 28) & 0xf) {
+  switch ((address >> 24) & 0xf) {
     case 0xe:
-      if (address < 0xe0000000 + e->rom.size) {
+      if (address < 0x0e000000 + e->rom.size) {
         return (MemoryTypeAddressPair){.type = MEMORY_MAP_ROM,
-                                       .addr = address - 0xe0000000};
+                                       .addr = address - 0x0e000000};
       }
       /* Fallthrough. */
 
@@ -837,7 +837,7 @@ void init_emulator(Emulator* e, Buffer* rom) {
   ZERO_MEMORY(*e);
   e->state.reg[REGISTER_SR] = 0xf0;
   e->rom = *rom;
-  e->state.pc = 0xe0000480;
+  e->state.pc = 0x0e000480;
   e->state.pipeline.if_.active = true;
 }
 
@@ -1007,6 +1007,10 @@ StageResult stage_execute(Emulator* e) {
     case MOVA_A_D_PC_R0:
       e->state.reg[0] = instr.d;
       print_registers(e, 1, 0);
+      break;
+
+    /* nop */
+    case NOP:
       break;
 
     default:
