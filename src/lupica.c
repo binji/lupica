@@ -1014,6 +1014,40 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 2, instr.m, instr.n);
       break;
 
+    /* mov.l rm, @rn */
+    case MOVL_RM_ARN:
+    movl_rm_arn:
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_WRITE_U32,
+                      .addr = e->state.reg[instr.n],
+                      .v32 = e->state.reg[instr.m]};
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
+    /* mov.l @rm, rn */
+    case MOVL_ARM_RN:
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_READ_U32,
+                      .addr = e->state.reg[instr.m],
+                      .wb_reg = instr.n};
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
+    /* mov.l rm, @-rn */
+    case MOVL_RM_AMRN:
+      e->state.reg[instr.n] -= 4;
+      goto movl_rm_arn;
+
+    /* mov.l @rm+, rn */
+    case MOVL_ARMP_RN:
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_READ_U32,
+                      .addr = e->state.reg[instr.m],
+                      .wb_reg = instr.n};
+      e->state.reg[instr.m] += 4;
+      print_registers(e, 1, instr.m);
+      break;
+
     /* mov #i, rn */
     case MOV_I_RN:
       e->state.reg[instr.n] = instr.i;
@@ -1035,29 +1069,13 @@ StageResult stage_execute(Emulator* e) {
                       .wb_reg = instr.n};
       break;
 
-    /* mov.l @rm+, rn */
-    case MOVL_ARMP_RN:
+    /* mov.w r0, @(disp, gbr) */
+    case MOVW_R0_A_D_GBR:
       *ma = (StageMA){.active = true,
-                      .type = MEMORY_ACCESS_READ_U32,
-                      .addr = e->state.reg[instr.m],
-                      .wb_reg = instr.n};
-      e->state.reg[instr.m] += 4;
-      print_registers(e, 1, instr.m);
-      break;
-
-    /* mov.l rm, @-rn */
-    case MOVL_RM_AMRN:
-      e->state.reg[instr.n] -= 4;
-      goto movl_rm_arn;
-
-    /* mov.l rm, @rn */
-    case MOVL_RM_ARN:
-    movl_rm_arn:
-      *ma = (StageMA){.active = true,
-                      .type = MEMORY_ACCESS_WRITE_U32,
-                      .addr = e->state.reg[instr.n],
-                      .v32 = e->state.reg[instr.m]};
-      print_registers(e, 2, instr.m, instr.n);
+                      .type = MEMORY_ACCESS_WRITE_U16,
+                      .addr = e->state.reg[REGISTER_GBR] + (instr.d << 1),
+                      .v16 = e->state.reg[0]};
+      print_registers(e, 2, 0, REGISTER_GBR);
       break;
 
     /* mova @(disp, pc), r0 */
