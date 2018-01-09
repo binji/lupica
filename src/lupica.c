@@ -988,6 +988,12 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 2, REGISTER_PC, REGISTER_PR);
       break;
 
+    /* ldc rm, gbr */
+    case LDC_RM_GBR:
+      e->state.reg[REGISTER_GBR] = e->state.reg[instr.m];
+      print_registers(e, 1, REGISTER_GBR);
+      break;
+
     /* ldc.l @rm+, vbr */
     case LDCL_ARMP_VBR:
       *ma = (StageMA){.active = true,
@@ -1205,7 +1211,7 @@ int main(int argc, char** argv) {
   init_emulator(&e, &rom);
 
   int i;
-  for (i = 0; i < 100; ++i) {
+  for (i = 0; i < 200; ++i) {
     step(&e);
   }
 
