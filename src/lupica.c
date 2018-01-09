@@ -1023,6 +1023,16 @@ StageResult stage_execute(Emulator* e) {
     case NOP:
       break;
 
+    /* sts.l pr, @-rn */
+    case STSL_PR_AMRN:
+      e->state.reg[instr.n] -= 4;
+      *ma = (StageMA){.active = true,
+                      .type = MEMORY_ACCESS_WRITE_U32,
+                      .addr = e->state.reg[REGISTER_PR],
+                      .v32 = e->state.reg[instr.n]};
+      print_registers(e, 2, REGISTER_PR, instr.n);
+      break;
+
     default:
       result = STAGE_RESULT_UNIMPLEMENTED;
       break;
