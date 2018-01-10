@@ -1248,7 +1248,7 @@ StageResult stage_execute(Emulator* e) {
     case MOVB_ARMP_RN:
       *ma = stage_ma_read_u8(e, regs[instr.m], instr.n);
       regs[instr.m] += 4;
-      print_registers(e, 2, instr.m, instr.n);
+      print_registers(e, 1, instr.m);
       break;
 
     /* mov.w @rm+, rn */
