@@ -260,6 +260,9 @@ typedef struct {
   V(XORB_I_A_R0_GBR, FORMAT_I, "xor.b", PAIR(IMM, AT2(REG0, GBR)))        \
   V(XTRCT_RM_RN, FORMAT_NM, "xtrct", REG_PAIR)
 
+#define BIOS_SIZE (64 * 1024)
+#define RAM_SIZE (512 * 1024)
+
 typedef enum {
 #define V(name, format, op_str, fmt_str) name,
   FOREACH_OP(V)
@@ -308,7 +311,8 @@ typedef enum {
 
 typedef enum {
   MEMORY_MAP_INVALID,
-  MEMORY_MAP_BIOS, /* 0x00000000..0x00001000 (?) */
+  MEMORY_MAP_BIOS, /* 0x00000000..0x00010000 (?) */
+  MEMORY_MAP_RAM,  /* 0x09000000..0x0907ffff */
   MEMORY_MAP_ROM,  /* 0x0e000000..0x0e000000 */
 } MemoryMapType;
 
@@ -396,6 +400,7 @@ typedef struct {
   u32 reg[NUM_REGISTERS];
   u32 pc;
   Pipeline pipeline;
+  u8 ram[RAM_SIZE];
 } State;
 
 typedef struct {
@@ -434,45 +439,62 @@ Result read_file(const char* filename, Buffer* buffer) {
   ON_ERROR_CLOSE_FILE_AND_RETURN;
 }
 
-MemoryTypeAddressPair map_address(Emulator* e, Address address) {
-  switch ((address >> 24) & 0xf) {
+MemoryTypeAddressPair map_address(Emulator* e, Address addr) {
+  MemoryMapType type;
+  Address base = addr & 0x0f000000;
+  switch ((addr >> 24) & 0xf) {
     case 0x0:
       /* TODO(binji): Seems to be BIOS routines; figure out what these do and
        * how big this region is. */
-      if (address < 0x1000) {
-        return (MemoryTypeAddressPair){.type = MEMORY_MAP_BIOS,
-                                       .addr = address};
-      }
-      goto invalid;
+      if (addr >= BIOS_SIZE) goto invalid;
+      type = MEMORY_MAP_BIOS;
+      break;
+
+    case 0x9:
+      if (addr >= base + RAM_SIZE) goto invalid;
+      type = MEMORY_MAP_RAM;
+      break;
 
     case 0xe:
-      if (address < 0x0e000000 + e->rom.size) {
-        return (MemoryTypeAddressPair){.type = MEMORY_MAP_ROM,
-                                       .addr = address - 0x0e000000};
-      }
-      goto invalid;
+      if (addr >= base + e->rom.size) goto invalid;
+      type = MEMORY_MAP_ROM;
+      break;
 
     invalid:
     default:
       return (MemoryTypeAddressPair){.type = MEMORY_MAP_INVALID};
   }
+
+  return (MemoryTypeAddressPair){.type = type, .addr = addr - base};
 }
 
-u16 read_u16(Emulator* e, Address address) {
+u16 read_u16_raw(Emulator* e, Address addr) {
   /* HACK: just RTS/NOP for any called routine. */
-  static u16 s_bios[0x1000] = {
-    [0x668] = 0x000b,
-    [0x66a] = 0x0009,
+  static u16 s_bios[0x10000] = {
+      [0x668] = 0x000b,
+      [0x66a] = 0x0009,
+
+      [0x5f4c] = 0x000b,
+      [0x5f4e] = 0x0009,
+
+      [0x6644] = 0x000b,
+      [0x6646] = 0x0009,
   };
 
-  MemoryTypeAddressPair pair = map_address(e, address);
+  MemoryTypeAddressPair pair = map_address(e, addr);
   switch (pair.type) {
     case MEMORY_MAP_BIOS:
       return s_bios[pair.addr];
 
-    case MEMORY_MAP_ROM:
+    case MEMORY_MAP_RAM:
+      return (e->state.ram[pair.addr] << 8) | e->state.ram[pair.addr];
+
+    case MEMORY_MAP_ROM: {
       /* TODO(binji): assumes little-endian. */
-      return ((u16*)e->rom.data)[pair.addr >> 1];
+      u16 value;
+      memcpy(&value, &e->rom.data[pair.addr], sizeof(u16));
+      return value;
+    }
 
     default:
     case MEMORY_MAP_INVALID:
@@ -480,13 +502,65 @@ u16 read_u16(Emulator* e, Address address) {
   }
 }
 
-u8 read_u8(Emulator* e, Address address) {
-  u16 x = read_u16(e, address & ~1);
-  return address & 1 ? x >> 8 : x & 0xff;
+u8 read_u8(Emulator* e, Address addr) {
+  u16 x = read_u16_raw(e, addr & ~1);
+  return addr & 1 ? x >> 8 : x & 0xff;
 }
 
-u32 read_u32(Emulator* e, Address address) {
-  return (read_u16(e, address) << 16) | read_u16(e, address + 2);
+u16 read_u16(Emulator* e, Address addr) {
+  assert((addr & 1) == 0);
+  return read_u16_raw(e, addr);
+}
+
+u32 read_u32(Emulator* e, Address addr) {
+  assert((addr & 3) == 0);
+  return (read_u16_raw(e, addr) << 16) | read_u16_raw(e, addr + 2);
+}
+
+void write_u8(Emulator* e, Address addr, u8 value) {
+  MemoryTypeAddressPair pair = map_address(e, addr);
+  switch (pair.type) {
+    case MEMORY_MAP_RAM:
+      e->state.ram[pair.addr] = value;
+      break;
+
+    default:
+      break;
+  }
+}
+
+void write_u16(Emulator* e, Address addr, u16 value) {
+  /* TODO(binji): this should be an exception instead of assert. */
+  assert((addr & 1) == 0);
+
+  MemoryTypeAddressPair pair = map_address(e, addr);
+  switch (pair.type) {
+    case MEMORY_MAP_RAM:
+      e->state.ram[pair.addr] = value >> 8;
+      e->state.ram[pair.addr + 1] = value;
+      break;
+
+    default:
+      break;
+  }
+}
+
+void write_u32(Emulator* e, Address addr, u32 value) {
+  /* TODO(binji): this should be an exception instead of assert. */
+  assert((addr & 3) == 0);
+
+  MemoryTypeAddressPair pair = map_address(e, addr);
+  switch (pair.type) {
+    case MEMORY_MAP_RAM:
+      e->state.ram[pair.addr] = value >> 24;
+      e->state.ram[pair.addr + 1] = value >> 16;
+      e->state.ram[pair.addr + 2] = value >> 8;
+      e->state.ram[pair.addr + 3] = value;
+      break;
+
+    default:
+      break;
+  }
 }
 
 bool instr_has_n(InstrFormat format) {
@@ -851,12 +925,12 @@ invalid:
   return format_0(INVALID_OP);
 }
 
-void disassemble(Emulator* e, size_t num_instrs, u32 address) {
+void disassemble(Emulator* e, size_t num_instrs, u32 addr) {
   size_t i;
-  for (i = 0; i < num_instrs; ++i, address += 2) {
-    u16 code = read_u16(e, address);
-    printf(YELLOW "[%08x]: " WHITE "%04x ", address, code);
-    Instr instr = decode(address, code);
+  for (i = 0; i < num_instrs; ++i, addr += 2) {
+    u16 code = read_u16(e, addr);
+    printf(YELLOW "[%08x]: " WHITE "%04x ", addr, code);
+    Instr instr = decode(addr, code);
     if (instr.op == INVALID_OP) {
       printf(MAGENTA ".WORD %04x" WHITE, code);
     } else {
@@ -1229,7 +1303,7 @@ StageResult stage_execute(Emulator* e) {
     /* sts.l pr, @-rn */
     case STSL_PR_AMRN:
       regs[instr.n] -= 4;
-      *ma = stage_ma_write_u32(e, regs[REGISTER_PR], regs[instr.n]);
+      *ma = stage_ma_write_u32(e, regs[instr.n], regs[REGISTER_PR]);
       print_registers(e, 2, REGISTER_PR, instr.n);
       break;
 
@@ -1298,7 +1372,7 @@ StageResult stage_memory_access(Emulator* e) {
 
     case MEMORY_ACCESS_WRITE_U8: {
       u8 val = ma->v8;
-      // write_u8(e, addr, val);
+      write_u8(e, addr, val);
       if (e->verbosity > 1) {
         printf("  0x%02x => [0x%08x]\n", val, addr);
       }
@@ -1307,7 +1381,7 @@ StageResult stage_memory_access(Emulator* e) {
 
     case MEMORY_ACCESS_WRITE_U16: {
       u16 val = ma->v16;
-      // write_u16(e, addr, val);
+      write_u16(e, addr, val);
       if (e->verbosity > 1) {
         printf("  0x%04x => [0x%08x]\n", val, addr);
       }
@@ -1316,7 +1390,7 @@ StageResult stage_memory_access(Emulator* e) {
 
     case MEMORY_ACCESS_WRITE_U32: {
       u32 val = ma->v32;
-      // write_u32(e, addr, val);
+      write_u32(e, addr, val);
       if (e->verbosity > 1) {
         printf("  0x%08x => [0x%08x]\n", val, addr);
       }
@@ -1399,19 +1473,24 @@ int main(int argc, char** argv) {
 
   Buffer rom;
   CHECK(SUCCESS(read_file(rom_filename, &rom)));
-  Emulator e;
-  init_emulator(&e, &rom);
+  Emulator* e = malloc(sizeof(Emulator));
+  init_emulator(e, &rom);
+
+  e->verbosity = 1;
 
   StageResult sr;
   int i;
   for (i = 0; i < 100000; ++i) {
-    sr = step(&e);
+    sr = step(e);
+
     if (sr == STAGE_RESULT_UNIMPLEMENTED) {
-      e.verbosity = 2;
-      step(&e);
+      e->verbosity = 2;
+      step(e);
       break;
     }
   }
+
+  free(e);
 
   return 0;
   ON_ERROR_RETURN;
