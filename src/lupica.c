@@ -957,11 +957,21 @@ void print_registers(Emulator* e, int n, ...) {
 
   printf("  ; ");
 
+  u32 seen = 0;
+
   va_list args;
   va_start(args, n);
   int i;
   for (i = 0; i < n; ++i) {
     int reg = va_arg(args, int);
+
+    /* Only print a given register once. */
+    u32 mask = 1 << reg;
+    if (seen & mask) {
+      continue;
+    }
+    seen |= mask;
+
     const char* name;
     u32 val;
     switch (reg) {
@@ -1024,7 +1034,7 @@ void stage_decode(Emulator* e) {
 
   if (e->verbosity > 1) {
     print_stage(id->s, "decode");
-    printf("      1x%04x => ", id->code);
+    printf("      0x%04x => ", id->code);
     print_instr(e, instr, false);
     printf("\n");
   }
