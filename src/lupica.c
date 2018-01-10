@@ -282,6 +282,17 @@ typedef enum {
 } InstrFormat;
 
 typedef enum {
+  SR_T = 1 << 0,
+  SR_S = 1 << 1,
+  SR_I0 = 1 << 4,
+  SR_I1 = 1 << 5,
+  SR_I2 = 1 << 6,
+  SR_I3 = 1 << 7,
+  SR_Q = 1 << 8,
+  SR_M = 1 << 9,
+} SrBits;
+
+typedef enum {
   REGISTER_GBR = 16,
   REGISTER_VBR,
   REGISTER_MACH,
@@ -296,15 +307,6 @@ typedef enum {
 } Register;
 
 typedef enum {
-  STAGE_NONE,
-  STAGE_IF, /* Instruction fetch. */
-  STAGE_ID, /* Instruction decode. */
-  STAGE_EX, /* Instruction execute. */
-  STAGE_MA, /* Memory access. */
-  STAGE_WB, /* Write back. */
-} Stage;
-
-typedef enum {
   MEMORY_MAP_INVALID,
   MEMORY_MAP_BIOS, /* 0x00000000..0x00001000 (?) */
   MEMORY_MAP_ROM,  /* 0x0e000000..0x0e000000 */
@@ -316,6 +318,8 @@ typedef struct {
 } MemoryTypeAddressPair;
 
 typedef enum {
+  MEMORY_ACCESS_READ_U8,
+  MEMORY_ACCESS_WRITE_U8,
   MEMORY_ACCESS_READ_U16,
   MEMORY_ACCESS_WRITE_U16,
   MEMORY_ACCESS_READ_U32,
@@ -343,21 +347,27 @@ typedef struct {
 } Instr;
 
 typedef struct {
-  Address addr;
+  Address iaddr;
   bool active;
+} Stage;
+
+typedef struct {
+  Stage s;
 } StageIF;
 
 typedef struct {
+  Stage s;
   u32 code;
-  bool active;
+  u32 pc;
 } StageID;
 
 typedef struct {
+  Stage s;
   Instr instr;
-  bool active;
 } StageEX;
 
 typedef struct {
+  Stage s;
   MemoryAccessType type;
   Address addr;
   union {
@@ -366,13 +376,12 @@ typedef struct {
     u32 v32;
     u32 wb_reg;
   };
-  bool active;
 } StageMA;
 
 typedef struct {
+  Stage s;
   u32 reg;
   u32 val;
-  bool active;
 } StageWB;
 
 typedef struct {
@@ -862,7 +871,7 @@ void init_emulator(Emulator* e, Buffer* rom) {
   e->state.reg[REGISTER_SR] = 0xf0;
   e->rom = *rom;
   e->state.pc = 0x0e000480;
-  e->state.pipeline.if_.active = true;
+  e->state.pipeline.if_.s.active = true;
 }
 
 void print_registers(Emulator* e, int n, ...) {
@@ -900,25 +909,25 @@ void print_registers(Emulator* e, int n, ...) {
   va_end(args);
 }
 
-void print_stage(const char* name) {
-  printf(CYAN "%9s:" WHITE " ", name);
+void print_stage(Stage s, const char* name) {
+  printf(CYAN "%9s" WHITE "[%08x]: ", name, s.iaddr);
 }
 
 void stage_fetch(Emulator* e) {
   StageIF* if_ = &e->state.pipeline.if_;
   StageID* id = &e->state.pipeline.id;
 
-  if (!if_->active) {
+  if (!if_->s.active) {
     return;
   }
 
   u32 pc = e->state.pc;
+  if_->s.iaddr = pc;
   u16 code = read_u16(e, pc);
-  id->code = code;
-  id->active = true;
+  *id = (StageID){.s = {.active = true, .iaddr = pc}, .code = code, .pc = pc};
   e->state.pc += 2;
 
-  print_stage("fetch");
+  print_stage(if_->s, "fetch");
   printf("[0x%08x] => 0x%04x\n", pc, code);
 }
 
@@ -926,44 +935,58 @@ void stage_decode(Emulator* e) {
   StageID* id = &e->state.pipeline.id;
   StageEX* ex = &e->state.pipeline.ex;
 
-  if (!id->active) {
+  if (!id->s.active) {
     return;
   }
 
-  id->active = false;
-
   Instr instr = decode(e->state.pc - 2, id->code);
-  *ex = (StageEX){.active = true, .instr = instr};
+  *ex = (StageEX){.s = id->s, .instr = instr};
 
-  print_stage("decode");
+  id->s.active = false;
+
+  print_stage(id->s, "decode");
   printf("      0x%04x => ", id->code);
   print_instr(e, instr, false);
   printf("\n");
 }
 
-static StageMA stage_ma_read_u16(u32 addr, Register reg) {
-  return (StageMA){.active = true,
+static StageMA stage_ma_read_u8(Emulator* e, Address addr, Register reg) {
+  return (StageMA){.s = e->state.pipeline.ex.s,
+                   .type = MEMORY_ACCESS_READ_U8,
+                   .addr = addr,
+                   .wb_reg = reg};
+}
+
+static StageMA stage_ma_write_u8(Emulator* e, Address addr, u8 val) {
+  return (StageMA){.s = e->state.pipeline.ex.s,
+                   .type = MEMORY_ACCESS_WRITE_U8,
+                   .addr = addr,
+                   .v8 = val};
+}
+
+static StageMA stage_ma_read_u16(Emulator* e, Address addr, Register reg) {
+  return (StageMA){.s = e->state.pipeline.ex.s,
                    .type = MEMORY_ACCESS_READ_U16,
                    .addr = addr,
                    .wb_reg = reg};
 }
 
-static StageMA stage_ma_write_u16(u32 addr, u16 val) {
-  return (StageMA){.active = true,
+static StageMA stage_ma_write_u16(Emulator* e, Address addr, u16 val) {
+  return (StageMA){.s = e->state.pipeline.ex.s,
                    .type = MEMORY_ACCESS_WRITE_U16,
                    .addr = addr,
                    .v16 = val};
 }
 
-static StageMA stage_ma_read_u32(u32 addr, Register reg) {
-  return (StageMA){.active = true,
+static StageMA stage_ma_read_u32(Emulator* e, Address addr, Register reg) {
+  return (StageMA){.s = e->state.pipeline.ex.s,
                    .type = MEMORY_ACCESS_READ_U32,
                    .addr = addr,
                    .wb_reg = reg};
 }
 
-static StageMA stage_ma_write_u32(u32 addr, u32 val) {
-  return (StageMA){.active = true,
+static StageMA stage_ma_write_u32(Emulator* e, Address addr, u32 val) {
+  return (StageMA){.s = e->state.pipeline.ex.s,
                    .type = MEMORY_ACCESS_WRITE_U32,
                    .addr = addr,
                    .v32 = val};
@@ -971,23 +994,22 @@ static StageMA stage_ma_write_u32(u32 addr, u32 val) {
 
 StageResult stage_execute(Emulator* e) {
   StageResult result = STAGE_RESULT_OK;
+  StageID* id = &e->state.pipeline.id;
   StageEX* ex = &e->state.pipeline.ex;
   StageMA* ma = &e->state.pipeline.ma;
   StageWB* wb = &e->state.pipeline.wb;
 
-  if (!ex->active) {
+  if (!ex->s.active) {
     return result;
   }
 
-  ex->active = false;
-
   Instr instr = ex->instr;
 
-  print_stage("execute");
+  print_stage(ex->s, "execute");
   print_instr(e, instr, false);
   printf("  ");
 
-  if (wb->active) {
+  if (wb->s.active) {
     InstrFormat format = s_op_info[instr.op].format;
     /* If the following writeback stage will write to the same destination
      * register as this instruction, we have to stall. */
@@ -1008,6 +1030,38 @@ StageResult stage_execute(Emulator* e) {
   u32* regs = &e->state.reg[0];
 
   switch (instr.op) {
+    /* add rm, rn */
+    case ADD_RM_RN:
+      regs[instr.n] += regs[instr.m];
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
+    /* add imm, rn */
+    case ADD_I_RN:
+      regs[instr.n] += instr.i;
+      print_registers(e, 1, instr.n);
+      break;
+
+    /* and rm, rn */
+    case AND_RM_RN:
+      regs[instr.n] &= regs[instr.m];
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
+    /* bf */
+    case BF:
+      if (!(regs[REGISTER_SR] & SR_T)) {
+        e->state.pc = instr.d;
+        /* TODO(binji): This is actually supposed to disable the decode stage,
+         * and fetch from the old pc in this cycle, but throw that fetch away.
+         * The behavior here is wrong, but likely not to matter, since it's not
+         * often that a discarded fetch will affect behavior. */
+        id->s.active = false;
+        result = STAGE_RESULT_STALL;
+      }
+      print_registers(e, 2, REGISTER_SR, REGISTER_PC);
+      break;
+
     /* bra */
     case BRA:
     bra:
@@ -1020,6 +1074,18 @@ StageResult stage_execute(Emulator* e) {
     case BSR:
       regs[REGISTER_PR] = e->state.pc;
       goto bra;
+
+    /* extu.b rm, rn */
+    case EXTUB_RM_RN:
+      regs[instr.n] = regs[instr.m] & 0xff;
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
+    /* extu.w rm, rn */
+    case EXTUW_RM_RN:
+      regs[instr.n] = regs[instr.m] & 0xffff;
+      print_registers(e, 2, instr.m, instr.n);
+      break;
 
     /* jsr @rm */
     case JSR_ARM:
@@ -1037,34 +1103,40 @@ StageResult stage_execute(Emulator* e) {
 
     /* ldc.l @rm+, vbr */
     case LDCL_ARMP_VBR:
-      *ma = stage_ma_read_u32(regs[instr.m], REGISTER_VBR);
+      *ma = stage_ma_read_u32(e, regs[instr.m], REGISTER_VBR);
       regs[instr.m] += 4;
       result = STAGE_RESULT_STALL;
       print_registers(e, 1, instr.m);
       break;
 
+    /* mov rm, rn */
+    case MOV_RM_RN:
+      regs[instr.n] = regs[instr.m];
+      print_registers(e, 1, instr.n);
+      break;
+
     /* mov.w rm, @rn */
     case MOVW_RM_ARN:
-      *ma = stage_ma_write_u16(regs[instr.n], regs[instr.m]);
+      *ma = stage_ma_write_u16(e, regs[instr.n], regs[instr.m]);
       print_registers(e, 2, instr.m, instr.n);
       break;
 
     /* mov.l rm, @rn */
     case MOVL_RM_ARN:
     movl_rm_arn:
-      *ma = stage_ma_write_u32(regs[instr.n], regs[instr.m]);
+      *ma = stage_ma_write_u32(e, regs[instr.n], regs[instr.m]);
       print_registers(e, 2, instr.m, instr.n);
       break;
 
     /* mov.w @rm, rn */
     case MOVW_ARM_RN:
-      *ma = stage_ma_read_u16(regs[instr.m], instr.n);
+      *ma = stage_ma_read_u16(e, regs[instr.m], instr.n);
       print_registers(e, 1, instr.m);
       break;
 
     /* mov.l @rm, rn */
     case MOVL_ARM_RN:
-      *ma = stage_ma_read_u32(regs[instr.m], instr.n);
+      *ma = stage_ma_read_u32(e, regs[instr.m], instr.n);
       print_registers(e, 1, instr.m);
       break;
 
@@ -1073,16 +1145,23 @@ StageResult stage_execute(Emulator* e) {
       regs[instr.n] -= 4;
       goto movl_rm_arn;
 
+    /* mov.b @rm+, rn */
+    case MOVB_ARMP_RN:
+      *ma = stage_ma_read_u8(e, regs[instr.m], instr.n);
+      regs[instr.m] += 4;
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
     /* mov.w @rm+, rn */
     case MOVW_ARMP_RN:
-      *ma = stage_ma_read_u16(regs[instr.m], instr.n);
+      *ma = stage_ma_read_u16(e, regs[instr.m], instr.n);
       regs[instr.m] += 4;
       print_registers(e, 1, instr.m);
       break;
 
     /* mov.l @rm+, rn */
     case MOVL_ARMP_RN:
-      *ma = stage_ma_read_u32(regs[instr.m], instr.n);
+      *ma = stage_ma_read_u32(e, regs[instr.m], instr.n);
       regs[instr.m] += 4;
       print_registers(e, 1, instr.m);
       break;
@@ -1094,18 +1173,18 @@ StageResult stage_execute(Emulator* e) {
 
     /* mov.w @(disp, pc), rn */
     case MOVW_A_D_PC_RN:
-      *ma = stage_ma_read_u16(instr.d, instr.n);
+      *ma = stage_ma_read_u16(e, instr.d, instr.n);
       break;
 
     /* mov.l @(disp, pc), rn */
     case MOVL_A_D_PC_RN:
-      *ma = stage_ma_read_u32(instr.d, instr.n);
+      *ma = stage_ma_read_u32(e, instr.d, instr.n);
       break;
 
     /* mov.w r0, @(disp, gbr) */
     case MOVW_R0_A_D_GBR: {
       u32 addr = regs[REGISTER_GBR] + (instr.d << 1);
-      *ma = stage_ma_write_u16(addr, regs[0]);
+      *ma = stage_ma_write_u16(e, addr, regs[0]);
       print_registers(e, 2, 0, REGISTER_ADDR, addr);
       break;
     }
@@ -1126,11 +1205,24 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, REGISTER_PC);
       break;
 
+    /* shll2 rn */
+    case SHLL2_RN:
+      regs[instr.n] <<= 2;
+      print_registers(e, 1, instr.n);
+      break;
+
     /* sts.l pr, @-rn */
     case STSL_PR_AMRN:
       regs[instr.n] -= 4;
-      *ma = stage_ma_write_u32(regs[REGISTER_PR], regs[instr.n]);
+      *ma = stage_ma_write_u32(e, regs[REGISTER_PR], regs[instr.n]);
       print_registers(e, 2, REGISTER_PR, instr.n);
+      break;
+
+    /* tst rm, rn */
+    case TST_RM_RN:
+      regs[REGISTER_SR] &= ~SR_T;
+      regs[REGISTER_SR] |= (regs[instr.m] & regs[instr.n]) ? 0 : SR_T;
+      print_registers(e, 3, instr.m, instr.n, REGISTER_SR);
       break;
 
     default:
@@ -1144,6 +1236,8 @@ StageResult stage_execute(Emulator* e) {
     UNREACHABLE("unimplemented instruction '%s'\n", s_op_info[instr.op].op_str);
   }
 
+  ex->s.active = false;
+
   return result;
 }
 
@@ -1153,28 +1247,37 @@ StageResult stage_memory_access(Emulator* e) {
   StageMA* ma = &e->state.pipeline.ma;
   StageWB* wb = &e->state.pipeline.wb;
 
-  if (!ma->active) {
+  if (!ma->s.active) {
     return result;
   }
 
-  ma->active = false;
-
-  print_stage("access");
+  print_stage(ma->s, "access");
 
   Address addr = ma->addr;
+  u32 val;
 
   switch (e->state.pipeline.ma.type) {
-    case MEMORY_ACCESS_READ_U16: {
-      u32 val = SIGN_EXTEND(read_u16(e, addr), 16);
-      *wb = (StageWB){.active = true, .reg = ma->wb_reg, .val = val};
+    case MEMORY_ACCESS_READ_U8:
+      val = SIGN_EXTEND(read_u8(e, addr), 8);
+      goto read;
+
+    case MEMORY_ACCESS_READ_U16:
+      val = SIGN_EXTEND(read_u16(e, addr), 16);
+      goto read;
+
+    case MEMORY_ACCESS_READ_U32:
+      val = read_u32(e, addr);
+      goto read;
+
+    read:
+      *wb = (StageWB){.s = ma->s, .reg = ma->wb_reg, .val = val};
       printf("[0x%08x] => 0x%08x\n", addr, val);
       break;
-    }
 
-    case MEMORY_ACCESS_READ_U32: {
-      u32 val = read_u32(e, addr);
-      *wb = (StageWB){.active = true, .reg = ma->wb_reg, .val = val};
-      printf("[0x%08x] => 0x%08x\n", addr, val);
+    case MEMORY_ACCESS_WRITE_U8: {
+      u8 val = ma->v8;
+      // write_u8(e, addr, val);
+      printf("  0x%02x => [0x%08x]\n", val, addr);
       break;
     }
 
@@ -1197,10 +1300,12 @@ StageResult stage_memory_access(Emulator* e) {
    * not supposed to stall if the next instruction is already fetched. This
    * happens when fetching instructions from on-chip ROM/cache, so it can fetch
    * two instructions (32-bits) instead of one (16-bits). */
-  if (e->state.pipeline.if_.active) {
+  if (e->state.pipeline.if_.s.active) {
     /* MA and IF contention. */
     result = STAGE_RESULT_STALL;
   }
+
+  ma->s.active = false;
 
   return result;
 }
@@ -1208,11 +1313,11 @@ StageResult stage_memory_access(Emulator* e) {
 StageResult stage_writeback(Emulator* e) {
   StageWB* wb = &e->state.pipeline.wb;
 
-  if (!wb->active) {
+  if (!wb->s.active) {
     return STAGE_RESULT_OK;
   }
 
-  wb->active = false;
+  wb->s.active = false;
 
   u32 reg = wb->reg;
   u32 val = wb->val;
@@ -1220,11 +1325,11 @@ StageResult stage_writeback(Emulator* e) {
 
   if (reg == REGISTER_GBR || reg == REGISTER_VBR || reg == REGISTER_SR) {
     /* Writing to GBR, VBR and SR happen in execute stage; fake that here. */
-    print_stage("execute*");
+    print_stage(wb->s, "execute*");
     printf("%s:%08x\n", s_reg_name[reg], val);
     return STAGE_RESULT_WRITEBACK_AS_EXECUTE;
   } else {
-    print_stage("writeback");
+    print_stage(wb->s, "writeback");
     printf("%s:%08x\n", s_reg_name[reg], val);
     return STAGE_RESULT_OK;
   }
