@@ -869,7 +869,7 @@ void disassemble(Emulator* e, size_t num_instrs, u32 address) {
 
 void init_emulator(Emulator* e, Buffer* rom) {
   ZERO_MEMORY(*e);
-  e->verbosity = 1;
+  e->verbosity = 0;
   e->state.reg[REGISTER_SR] = 0xf0;
   e->rom = *rom;
   e->state.pc = 0x0e000480;
@@ -1243,7 +1243,8 @@ StageResult stage_execute(Emulator* e) {
   }
 
   if (result == STAGE_RESULT_UNIMPLEMENTED) {
-    UNREACHABLE("unimplemented instruction '%s'\n", s_op_info[instr.op].op_str);
+    PRINT_ERROR("unimplemented instruction '%s'\n", s_op_info[instr.op].op_str);
+    return result;
   }
 
   ex->s.active = false;
@@ -1359,22 +1360,28 @@ StageResult stage_writeback(Emulator* e) {
   }
 }
 
-void step(Emulator* e) {
+StageResult step(Emulator* e) {
   if (e->verbosity > 1) {
     printf(YELLOW "--- step ---\n" WHITE);
   }
   if (stage_writeback(e) != STAGE_RESULT_WRITEBACK_AS_EXECUTE) {
     if (stage_memory_access(e) == STAGE_RESULT_STALL) {
-      return;
+      return STAGE_RESULT_STALL;
     }
 
-    if (stage_execute(e) == STAGE_RESULT_STALL) {
-      return;
+    StageResult result = stage_execute(e);
+    if (result == STAGE_RESULT_STALL) {
+      return STAGE_RESULT_STALL;
+    }
+    if (result == STAGE_RESULT_UNIMPLEMENTED) {
+      return result;
     }
   }
 
   stage_decode(e);
   stage_fetch(e);
+
+  return STAGE_RESULT_OK;
 }
 
 int main(int argc, char** argv) {
@@ -1388,9 +1395,15 @@ int main(int argc, char** argv) {
   Emulator e;
   init_emulator(&e, &rom);
 
+  StageResult sr;
   int i;
-  for (i = 0; i < 1000; ++i) {
-    step(&e);
+  for (i = 0; i < 100000; ++i) {
+    sr = step(&e);
+    if (sr == STAGE_RESULT_UNIMPLEMENTED) {
+      e.verbosity = 2;
+      step(&e);
+      break;
+    }
   }
 
   return 0;
