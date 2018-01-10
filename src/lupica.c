@@ -1117,6 +1117,13 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, instr.m);
       break;
 
+    /* lds.l @rm+, pr */
+    case LDSL_ARMP_PR:
+      *ma = stage_ma_read_u32(e, regs[instr.m], REGISTER_PR);
+      regs[instr.m] += 4;
+      print_registers(e, 1, instr.m);
+      break;
+
     /* mov rm, rn */
     case MOV_RM_RN:
       regs[instr.n] = regs[instr.m];
