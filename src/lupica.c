@@ -8,6 +8,7 @@
 #include <stdlib.h>
 
 #define USE_COLOR 1
+#define INSTR_COLUMNS 30
 
 #if USE_COLOR
 #define COLOR(x) "\x1b[" x "m"
@@ -574,25 +575,47 @@ bool instr_has_m(InstrFormat format) {
 }
 
 void print_instr(Emulator* e, Instr instr, bool print_memory) {
+  char buf[100];
+  char* bufp = buf;
+
+#define SNCAT(...) \
+  bufp += snprintf(bufp, sizeof(buf) - (bufp - buf), __VA_ARGS__)
+
   OpInfo op_info = s_op_info[instr.op];
-  printf(GREEN "%s" WHITE " ", op_info.op_str);
+  SNCAT(GREEN "%s" WHITE " ", op_info.op_str);
 
   // clang-format off
   switch (op_info.format) {
     case FORMAT_0: break;
-    case FORMAT_M: printf(op_info.fmt_str, instr.m); break;
-    case FORMAT_N: printf(op_info.fmt_str, instr.n); break;
-    case FORMAT_NM: printf(op_info.fmt_str, instr.m, instr.n); break;
-    case FORMAT_MD: printf(op_info.fmt_str, instr.d, instr.m); break;
-    case FORMAT_NMD: printf(op_info.fmt_str, instr.m, instr.d, instr.n); break;
+    case FORMAT_M: SNCAT(op_info.fmt_str, instr.m); break;
+    case FORMAT_N: SNCAT(op_info.fmt_str, instr.n); break;
+    case FORMAT_NM: SNCAT(op_info.fmt_str, instr.m, instr.n); break;
+    case FORMAT_MD: SNCAT(op_info.fmt_str, instr.d, instr.m); break;
+    case FORMAT_NMD: SNCAT(op_info.fmt_str, instr.m, instr.d, instr.n); break;
     case FORMAT_D:
-    case FORMAT_D12: printf(op_info.fmt_str, instr.d); break;
+    case FORMAT_D12: SNCAT(op_info.fmt_str, instr.d); break;
     case FORMAT_ND4:
-    case FORMAT_ND8: printf(op_info.fmt_str, instr.d, instr.n); break;
-    case FORMAT_I: printf(op_info.fmt_str, instr.i); break;
-    case FORMAT_NI: printf(op_info.fmt_str, instr.i, instr.n); break;
+    case FORMAT_ND8: SNCAT(op_info.fmt_str, instr.d, instr.n); break;
+    case FORMAT_I: SNCAT(op_info.fmt_str, instr.i); break;
+    case FORMAT_NI: SNCAT(op_info.fmt_str, instr.i, instr.n); break;
   }
   // clang-format on
+
+#undef SNCAT
+
+  /* Count the length of the instruction, skipping color escape codes. */
+  int count = 0;
+  const char* p;
+  for (p = buf; *p; ++p) {
+    if (*p == '\x1b') {
+      while (*p && *p != 'm') p++;
+    } else {
+      ++count;
+    }
+  }
+
+  /* Pad out the instruction with spaces, so whatever follows is aligned. */
+  printf("%s%*s", buf, INSTR_COLUMNS - count, "");
 
   if (print_memory) {
     if ((op_info.format == FORMAT_D && instr.op == MOVA_A_D_PC_R0) ||
@@ -604,7 +627,7 @@ void print_instr(Emulator* e, Instr instr, bool print_memory) {
       } else {
         val = read_u32(e, instr.d);
       }
-      printf("  ; 0x%08x", val);
+      printf("; 0x%08x", val);
     }
   }
 }
@@ -955,7 +978,7 @@ void print_registers(Emulator* e, int n, ...) {
     return;
   }
 
-  printf("  ; ");
+  printf("; ");
 
   u32 seen = 0;
 
@@ -1098,7 +1121,6 @@ StageResult stage_execute(Emulator* e) {
   if (e->verbosity > 0) {
     print_stage(ex->s, "execute");
     print_instr(e, instr, false);
-    printf("  ");
   }
 
   if (wb->s.active) {
@@ -1435,20 +1457,24 @@ StageResult stage_writeback(Emulator* e) {
   u32 val = wb->val;
   e->state.reg[reg] = val;
 
+  const char* stage_name = NULL;
+  StageResult result;
+
   if (reg == REGISTER_GBR || reg == REGISTER_VBR || reg == REGISTER_SR) {
     /* Writing to GBR, VBR and SR happen in execute stage; fake that here. */
-    if (e->verbosity > 1) {
-      print_stage(wb->s, "execute*");
-      printf("%s:%08x\n", s_reg_name[reg], val);
-    }
-    return STAGE_RESULT_WRITEBACK_AS_EXECUTE;
+    stage_name = "execute*";
+    result = STAGE_RESULT_WRITEBACK_AS_EXECUTE;
   } else {
-    if (e->verbosity > 1) {
-      print_stage(wb->s, "writeback");
-      printf("%s:%08x\n", s_reg_name[reg], val);
-    }
-    return STAGE_RESULT_OK;
+    stage_name = "writeback";
+    result = STAGE_RESULT_OK;
   }
+
+  if (e->verbosity > 0) {
+    print_stage(wb->s, stage_name);
+    printf("%*s; %s:%08x\n", INSTR_COLUMNS, "", s_reg_name[reg], val);
+  }
+
+  return result;
 }
 
 StageResult step(Emulator* e) {
