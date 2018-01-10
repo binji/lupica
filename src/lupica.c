@@ -401,6 +401,7 @@ typedef struct {
 typedef struct {
   State state;
   Buffer rom;
+  int verbosity;
 } Emulator;
 
 const char* s_reg_name[NUM_REGISTERS] = {
@@ -868,6 +869,7 @@ void disassemble(Emulator* e, size_t num_instrs, u32 address) {
 
 void init_emulator(Emulator* e, Buffer* rom) {
   ZERO_MEMORY(*e);
+  e->verbosity = 1;
   e->state.reg[REGISTER_SR] = 0xf0;
   e->rom = *rom;
   e->state.pc = 0x0e000480;
@@ -875,7 +877,7 @@ void init_emulator(Emulator* e, Buffer* rom) {
 }
 
 void print_registers(Emulator* e, int n, ...) {
-  if (n == 0) {
+  if (n == 0 || e->verbosity == 0) {
     return;
   }
 
@@ -927,8 +929,10 @@ void stage_fetch(Emulator* e) {
   *id = (StageID){.s = {.active = true, .iaddr = pc}, .code = code, .pc = pc};
   e->state.pc += 2;
 
-  print_stage(if_->s, "fetch");
-  printf("[0x%08x] => 0x%04x\n", pc, code);
+  if (e->verbosity > 1) {
+    print_stage(if_->s, "fetch");
+    printf("[0x%08x] => 0x%04x\n", pc, code);
+  }
 }
 
 void stage_decode(Emulator* e) {
@@ -944,10 +948,12 @@ void stage_decode(Emulator* e) {
 
   id->s.active = false;
 
-  print_stage(id->s, "decode");
-  printf("      0x%04x => ", id->code);
-  print_instr(e, instr, false);
-  printf("\n");
+  if (e->verbosity > 1) {
+    print_stage(id->s, "decode");
+    printf("      1x%04x => ", id->code);
+    print_instr(e, instr, false);
+    printf("\n");
+  }
 }
 
 static StageMA stage_ma_read_u8(Emulator* e, Address addr, Register reg) {
@@ -1005,9 +1011,11 @@ StageResult stage_execute(Emulator* e) {
 
   Instr instr = ex->instr;
 
-  print_stage(ex->s, "execute");
-  print_instr(e, instr, false);
-  printf("  ");
+  if (e->verbosity > 0) {
+    print_stage(ex->s, "execute");
+    print_instr(e, instr, false);
+    printf("  ");
+  }
 
   if (wb->s.active) {
     InstrFormat format = s_op_info[instr.op].format;
@@ -1230,7 +1238,9 @@ StageResult stage_execute(Emulator* e) {
       break;
   }
 
-  printf("\n");
+  if (e->verbosity > 0) {
+    printf("\n");
+  }
 
   if (result == STAGE_RESULT_UNIMPLEMENTED) {
     UNREACHABLE("unimplemented instruction '%s'\n", s_op_info[instr.op].op_str);
@@ -1251,7 +1261,9 @@ StageResult stage_memory_access(Emulator* e) {
     return result;
   }
 
-  print_stage(ma->s, "access");
+  if (e->verbosity > 1) {
+    print_stage(ma->s, "access");
+  }
 
   Address addr = ma->addr;
   u32 val;
@@ -1271,27 +1283,35 @@ StageResult stage_memory_access(Emulator* e) {
 
     read:
       *wb = (StageWB){.s = ma->s, .reg = ma->wb_reg, .val = val};
-      printf("[0x%08x] => 0x%08x\n", addr, val);
+      if (e->verbosity > 1) {
+        printf("[0x%08x] => 0x%08x\n", addr, val);
+      }
       break;
 
     case MEMORY_ACCESS_WRITE_U8: {
       u8 val = ma->v8;
       // write_u8(e, addr, val);
-      printf("  0x%02x => [0x%08x]\n", val, addr);
+      if (e->verbosity > 1) {
+        printf("  0x%02x => [0x%08x]\n", val, addr);
+      }
       break;
     }
 
     case MEMORY_ACCESS_WRITE_U16: {
       u16 val = ma->v16;
       // write_u16(e, addr, val);
-      printf("  0x%04x => [0x%08x]\n", val, addr);
+      if (e->verbosity > 1) {
+        printf("  0x%04x => [0x%08x]\n", val, addr);
+      }
       break;
     }
 
     case MEMORY_ACCESS_WRITE_U32: {
       u32 val = ma->v32;
       // write_u32(e, addr, val);
-      printf("  0x%08x => [0x%08x]\n", val, addr);
+      if (e->verbosity > 1) {
+        printf("  0x%08x => [0x%08x]\n", val, addr);
+      }
       break;
     }
   }
@@ -1325,18 +1345,24 @@ StageResult stage_writeback(Emulator* e) {
 
   if (reg == REGISTER_GBR || reg == REGISTER_VBR || reg == REGISTER_SR) {
     /* Writing to GBR, VBR and SR happen in execute stage; fake that here. */
-    print_stage(wb->s, "execute*");
-    printf("%s:%08x\n", s_reg_name[reg], val);
+    if (e->verbosity > 1) {
+      print_stage(wb->s, "execute*");
+      printf("%s:%08x\n", s_reg_name[reg], val);
+    }
     return STAGE_RESULT_WRITEBACK_AS_EXECUTE;
   } else {
-    print_stage(wb->s, "writeback");
-    printf("%s:%08x\n", s_reg_name[reg], val);
+    if (e->verbosity > 1) {
+      print_stage(wb->s, "writeback");
+      printf("%s:%08x\n", s_reg_name[reg], val);
+    }
     return STAGE_RESULT_OK;
   }
 }
 
 void step(Emulator* e) {
-  printf(YELLOW "--- step ---\n" WHITE);
+  if (e->verbosity > 1) {
+    printf(YELLOW "--- step ---\n" WHITE);
+  }
   if (stage_writeback(e) != STAGE_RESULT_WRITEBACK_AS_EXECUTE) {
     if (stage_memory_access(e) == STAGE_RESULT_STALL) {
       return;
