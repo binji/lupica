@@ -1317,6 +1317,14 @@ StageResult stage_execute(Emulator* e) {
       break;
     }
 
+    /* mov.l @(disp, rm), rn */
+    case MOVL_A_D_RM_RN: {
+      u32 addr = regs[instr.m] + instr.d;
+      *ma = stage_ma_read_u32(e, addr, instr.n);
+      print_registers(e, 1, REGISTER_ADDR, addr);
+      break;
+    }
+
     /* mova @(disp, pc), r0 */
     case MOVA_A_D_PC_R0:
       regs[0] = instr.d;
