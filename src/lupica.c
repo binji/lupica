@@ -488,7 +488,7 @@ u16 read_u16_raw(Emulator* e, Address addr) {
       return s_bios[pair.addr];
 
     case MEMORY_MAP_RAM:
-      return (e->state.ram[pair.addr] << 8) | e->state.ram[pair.addr];
+      return (e->state.ram[pair.addr] << 8) | e->state.ram[pair.addr + 1];
 
     case MEMORY_MAP_ROM: {
       /* TODO(binji): assumes little-endian. */
