@@ -499,6 +499,7 @@ u16 read_u16_raw(Emulator* e, Address addr) {
 
     default:
     case MEMORY_MAP_INVALID:
+      printf(YELLOW "invalid memory read @0x%08x\n" WHITE, addr);
       return 0xffff;
   }
 }
@@ -526,6 +527,8 @@ void write_u8(Emulator* e, Address addr, u8 value) {
       break;
 
     default:
+      printf(YELLOW "invalid memory write @0x%08x <= 0x%02x\n" WHITE, addr,
+             value);
       break;
   }
 }
@@ -542,6 +545,8 @@ void write_u16(Emulator* e, Address addr, u16 value) {
       break;
 
     default:
+      printf(YELLOW "invalid memory write @0x%08x <= 0x%04x\n" WHITE, addr,
+             value);
       break;
   }
 }
@@ -560,6 +565,8 @@ void write_u32(Emulator* e, Address addr, u32 value) {
       break;
 
     default:
+      printf(YELLOW "invalid memory write @0x%08x <= 0x%08x\n" WHITE, addr,
+             value);
       break;
   }
 }
