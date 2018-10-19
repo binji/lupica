@@ -314,6 +314,7 @@ typedef enum {
   MEMORY_MAP_INVALID,
   MEMORY_MAP_BIOS, /* 0x00000000..0x00010000 (?) */
   MEMORY_MAP_RAM,  /* 0x09000000..0x0907ffff */
+  MEMORY_MAP_IO,   /* 0x0c04????..0x0c05???? */
   MEMORY_MAP_ROM,  /* 0x0e000000..0x0e000000 */
 } MemoryMapType;
 
@@ -499,7 +500,7 @@ u16 read_u16_raw(Emulator* e, Address addr) {
 
     default:
     case MEMORY_MAP_INVALID:
-      printf(YELLOW "invalid memory read @0x%08x\n" WHITE, addr);
+      printf(YELLOW "invalid memory read  @0x%08x\n" WHITE, addr);
       return 0xffff;
   }
 }
@@ -1112,6 +1113,12 @@ static StageMA stage_ma_write_u32(Emulator* e, Address addr, u32 val) {
                    .v32 = val};
 }
 
+static void set_sr_t_if(Emulator* e, bool cond) {
+  u32* regs = &e->state.reg[0];
+  regs[REGISTER_SR] &= ~SR_T;
+  regs[REGISTER_SR] |= cond ? SR_T : 0;
+}
+
 StageResult stage_execute(Emulator* e) {
   StageResult result = STAGE_RESULT_OK;
   StageID* id = &e->state.pipeline.id;
@@ -1196,6 +1203,24 @@ StageResult stage_execute(Emulator* e) {
       regs[REGISTER_PR] = e->state.pc;
       goto bra;
 
+    /* cmp/ge rm, rn */
+    case CMPGE_RM_RN:
+      set_sr_t_if(e, (s32)regs[instr.n] >= (s32)regs[instr.m]);
+      print_registers(e, 3, instr.m, instr.n, REGISTER_SR);
+      break;
+
+    /* cmp/hs rm, rn */
+    case CMPHS_RM_RN:
+      set_sr_t_if(e, regs[instr.n] >= regs[instr.m]);
+      print_registers(e, 3, instr.m, instr.n, REGISTER_SR);
+      break;
+
+    /* exts.w rm, rn */
+    case EXTSW_RM_RN:
+      regs[instr.n] = SIGN_EXTEND(regs[instr.m], 16);
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
     /* extu.b rm, rn */
     case EXTUB_RM_RN:
       regs[instr.n] = regs[instr.m] & 0xff;
@@ -1222,6 +1247,12 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, REGISTER_GBR);
       break;
 
+    /* ldc rm, vbr */
+    case LDC_RM_VBR:
+      regs[REGISTER_VBR] = regs[instr.m];
+      print_registers(e, 1, REGISTER_VBR);
+      break;
+
     /* ldc.l @rm+, vbr */
     case LDCL_ARMP_VBR:
       *ma = stage_ma_read_u32(e, regs[instr.m], REGISTER_VBR);
@@ -1241,6 +1272,12 @@ StageResult stage_execute(Emulator* e) {
     case MOV_RM_RN:
       regs[instr.n] = regs[instr.m];
       print_registers(e, 1, instr.n);
+      break;
+
+    /* mov.b rm, @rn */
+    case MOVB_RM_ARN:
+      *ma = stage_ma_write_u8(e, regs[instr.n], regs[instr.m]);
+      print_registers(e, 2, instr.m, instr.n);
       break;
 
     /* mov.w rm, @rn */
@@ -1294,6 +1331,14 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, instr.m);
       break;
 
+    /* mov.l rm, @(r0, rn) */
+    case MOVL_RM_A_R0_RN: {
+      u32 addr = regs[0] + regs[instr.n];
+      *ma = stage_ma_write_u32(e, addr, instr.m);
+      print_registers(e, 2, instr.m, REGISTER_ADDR, addr);
+      break;
+    }
+
     /* mov #i, rn */
     case MOV_I_RN:
       regs[instr.n] = instr.i;
@@ -1311,9 +1356,17 @@ StageResult stage_execute(Emulator* e) {
 
     /* mov.w r0, @(disp, gbr) */
     case MOVW_R0_A_D_GBR: {
-      u32 addr = regs[REGISTER_GBR] + (instr.d << 1);
+      u32 addr = regs[REGISTER_GBR] + instr.d;
       *ma = stage_ma_write_u16(e, addr, regs[0]);
       print_registers(e, 2, 0, REGISTER_ADDR, addr);
+      break;
+    }
+
+    /* mov.l rm, @(disp, rn) */
+    case MOVL_RM_A_D_RN: {
+      u32 addr = regs[instr.n] + instr.d;
+      *ma = stage_ma_write_u32(e, addr, instr.m);
+      print_registers(e, 2, instr.m, REGISTER_ADDR, addr);
       break;
     }
 
@@ -1356,8 +1409,7 @@ StageResult stage_execute(Emulator* e) {
 
     /* tst rm, rn */
     case TST_RM_RN:
-      regs[REGISTER_SR] &= ~SR_T;
-      regs[REGISTER_SR] |= (regs[instr.m] & regs[instr.n]) ? 0 : SR_T;
+      set_sr_t_if(e, (regs[instr.n] & regs[instr.m]) == 0);
       print_registers(e, 3, instr.m, instr.n, REGISTER_SR);
       break;
 
@@ -1527,11 +1579,11 @@ int main(int argc, char** argv) {
   Emulator* e = malloc(sizeof(Emulator));
   init_emulator(e, &rom);
 
-  e->verbosity = 1;
+  e->verbosity = 0;
 
   StageResult sr;
   int i;
-  for (i = 0; i < 100000; ++i) {
+  for (i = 0; i < 1000000; ++i) {
     sr = step(e);
 
     if (sr == STAGE_RESULT_UNIMPLEMENTED) {
