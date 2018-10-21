@@ -309,6 +309,7 @@ typedef enum {
   REGISTER_PC,
   REGISTER_ADDR,
   REGISTER_U8,
+  REGISTER_T,
 } Register;
 
 typedef enum {
@@ -480,9 +481,13 @@ u16 read_u16_raw(Emulator* e, Address addr) {
   // clang-format off
   static u16 s_bios[0x10000] = {
       [0x668] = 0x000b,  [0x66a] = 0x0009,
+      [0x3e64] = 0x000b, [0x3e66] = 0x0009,
       [0x5f4c] = 0x000b, [0x5f4e] = 0x0009,
       [0x613c] = 0x000b, [0x613e] = 0x0009,
       [0x6644] = 0x000b, [0x6646] = 0x0009,
+      [0x66d0] = 0x000b, [0x66d2] = 0x0009,
+      [0x6a48] = 0x000b, [0x6a4a] = 0x0009,
+      [0x6a5a] = 0x000b, [0x6a5c] = 0x0009,
       [0x6ac0] = 0x000b, [0x6ac2] = 0x0009,
       [0x6b50] = 0x000b, [0x6b52] = 0x0009,
   };
@@ -491,6 +496,7 @@ u16 read_u16_raw(Emulator* e, Address addr) {
   MemoryTypeAddressPair pair = map_address(e, addr);
   switch (pair.type) {
     case MEMORY_MAP_BIOS:
+      printf(YELLOW "reading BIOS  @0x%08x\n" WHITE, addr);
       return s_bios[pair.addr];
 
     case MEMORY_MAP_RAM:
@@ -1014,25 +1020,34 @@ void print_registers(Emulator* e, int n, ...) {
       case REGISTER_PC:
         name = MAKE_BOLD("pc");
         val = e->state.pc;
-        printf("%s:%08x ", name, val);
-        break;
+        goto print_u32;
 
       case REGISTER_ADDR:
         name = MAKE_BOLD("addr");
         val = va_arg(args, u32);
-        printf("%s:%08x ", name, val);
-        break;
+        goto print_u32;
 
       case REGISTER_U8:
         name = MAKE_BOLD("u8");
         val = va_arg(args, u32);
-        printf("%s:%02x ", name, val);
-        break;
+        goto print_u8;
+
+      case REGISTER_T:
+        name = MAKE_BOLD("t");
+        val = e->state.reg[REGISTER_SR] & SR_T;
+        goto print_u8;
 
       default:
         name = s_reg_name[reg];
         val = e->state.reg[reg];
+        goto print_u32;
+
+      print_u32:
         printf("%s:%08x ", name, val);
+        break;
+
+      print_u8:
+        printf("%s:%02x ", name, val);
         break;
     }
   }
@@ -1202,6 +1217,12 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 2, instr.m, instr.n);
       break;
 
+    /* and imm, r0 */
+    case AND_I_R0:
+      regs[0] &= instr.i;
+      print_registers(e, 1, 0);
+      break;
+
     /* bf */
     case BF:
       if (!(regs[REGISTER_SR] & SR_T)) {
@@ -1213,7 +1234,18 @@ StageResult stage_execute(Emulator* e) {
         id->s.active = false;
         result = STAGE_RESULT_STALL;
       }
-      print_registers(e, 2, REGISTER_SR, REGISTER_PC);
+      print_registers(e, 2, REGISTER_T, REGISTER_PC);
+      break;
+
+    /* bt */
+    case BT:
+      if (regs[REGISTER_SR] & SR_T) {
+        e->state.pc = instr.d;
+        /* TODO(binji): See comment in BF above. */
+        id->s.active = false;
+        result = STAGE_RESULT_STALL;
+      }
+      print_registers(e, 2, REGISTER_T, REGISTER_PC);
       break;
 
     /* bra */
@@ -1232,13 +1264,25 @@ StageResult stage_execute(Emulator* e) {
     /* cmp/ge rm, rn */
     case CMPGE_RM_RN:
       set_sr_t_if(e, (s32)regs[instr.n] >= (s32)regs[instr.m]);
-      print_registers(e, 3, instr.m, instr.n, REGISTER_SR);
+      print_registers(e, 3, instr.m, instr.n, REGISTER_T);
+      break;
+
+    /* cmp/hi rm, rn */
+    case CMPHI_RM_RN:
+      set_sr_t_if(e, regs[instr.n] > regs[instr.m]);
+      print_registers(e, 3, instr.m, instr.n, REGISTER_T);
       break;
 
     /* cmp/hs rm, rn */
     case CMPHS_RM_RN:
       set_sr_t_if(e, regs[instr.n] >= regs[instr.m]);
-      print_registers(e, 3, instr.m, instr.n, REGISTER_SR);
+      print_registers(e, 3, instr.m, instr.n, REGISTER_T);
+      break;
+
+    /* cmp/eq imm, r0 */
+    case CMPEQ_I_R0:
+      set_sr_t_if(e, instr.i == regs[0]);
+      print_registers(e, 2, 0, REGISTER_T);
       break;
 
     /* exts.w rm, rn */
@@ -1265,6 +1309,12 @@ StageResult stage_execute(Emulator* e) {
       e->state.pc = regs[instr.m];
       result = STAGE_RESULT_STALL;
       print_registers(e, 2, REGISTER_PC, REGISTER_PR);
+      break;
+
+    /* ldc rm, sr */
+    case LDC_RM_SR:
+      regs[REGISTER_SR] = regs[instr.m];
+      print_registers(e, 1, REGISTER_SR);
       break;
 
     /* ldc rm, gbr */
@@ -1397,11 +1447,35 @@ StageResult stage_execute(Emulator* e) {
       break;
     }
 
+    /* mov.b r0, @(disp, rn) */
+    case MOVB_R0_A_D_RN: {
+      u32 addr = regs[instr.n] + instr.d;
+      *ma = stage_ma_write_u8(e, addr, regs[0]);
+      print_registers(e, 2, 0, REGISTER_ADDR, addr);
+      break;
+    }
+
+    /* mov.w r0, @(disp, rn) */
+    case MOVW_R0_A_D_RN: {
+      u32 addr = regs[instr.n] + instr.d;
+      *ma = stage_ma_write_u16(e, addr, regs[0]);
+      print_registers(e, 2, 0, REGISTER_ADDR, addr);
+      break;
+    }
+
     /* mov.l rm, @(disp, rn) */
     case MOVL_RM_A_D_RN: {
       u32 addr = regs[instr.n] + instr.d;
       *ma = stage_ma_write_u32(e, addr, instr.m);
       print_registers(e, 2, instr.m, REGISTER_ADDR, addr);
+      break;
+    }
+
+    /* mov.w @(disp, rm), r0 */
+    case MOVW_A_D_RM_R0: {
+      u32 addr = regs[instr.m] + instr.d;
+      *ma = stage_ma_read_u16_wb(e, addr, 0);
+      print_registers(e, 1, REGISTER_ADDR, addr);
       break;
     }
 
@@ -1427,6 +1501,12 @@ StageResult stage_execute(Emulator* e) {
     case OR_RM_RN:
       regs[instr.n] |= regs[instr.m];
       print_registers(e, 2, instr.m, instr.n);
+      break;
+
+    /* or imm, r0 */
+    case OR_I_R0:
+      regs[0] |= instr.i;
+      print_registers(e, 1, 0);
       break;
 
     /* or.b imm, #(r0, gbr) */
@@ -1457,10 +1537,30 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, REGISTER_PC);
       break;
 
+    /* shll rn */
+    case SHLL_RN:
+      set_sr_t_if(e, (regs[instr.n] & 0x80000000) != 0);
+      regs[instr.n] <<= 1;
+      print_registers(e, 2, instr.n, REGISTER_T);
+      break;
+
     /* shll2 rn */
     case SHLL2_RN:
       regs[instr.n] <<= 2;
       print_registers(e, 1, instr.n);
+      break;
+
+    /* stc sr, rn */
+    case STC_SR_RN:
+      regs[instr.n] = regs[REGISTER_SR];
+      print_registers(e, 1, instr.n);
+      break;
+
+    /* sts.l macl, @-rn */
+    case STSL_MACL_AMRN:
+      regs[instr.n] -= 4;
+      *ma = stage_ma_write_u32(e, regs[instr.n], regs[REGISTER_MACL]);
+      print_registers(e, 2, REGISTER_MACL, instr.n);
       break;
 
     /* sts.l pr, @-rn */
@@ -1470,10 +1570,22 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 2, REGISTER_PR, instr.n);
       break;
 
+    /* swap.w rm, rn */
+    case SWAPW_RM_RN:
+      regs[instr.n] = (regs[instr.m] << 16) | (regs[instr.m] >> 16);
+      print_registers(e, 1, instr.n);
+      break;
+
     /* tst rm, rn */
     case TST_RM_RN:
       set_sr_t_if(e, (regs[instr.n] & regs[instr.m]) == 0);
-      print_registers(e, 3, instr.m, instr.n, REGISTER_SR);
+      print_registers(e, 3, instr.m, instr.n, REGISTER_T);
+      break;
+
+    /* xtrct rm, rn */
+    case XTRCT_RM_RN:
+      regs[instr.n] = (regs[instr.m] << 16) | (regs[instr.n] >> 16);
+      print_registers(e, 1, instr.n);
       break;
 
     default:
