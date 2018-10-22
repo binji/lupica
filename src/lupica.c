@@ -481,9 +481,11 @@ u16 read_u16_raw(Emulator* e, Address addr) {
   // clang-format off
   static u16 s_bios[0x10000] = {
       [0x668] = 0x000b,  [0x66a] = 0x0009,
+      [0x69c] = 0x000b,  [0x69e] = 0x0009,
       [0x3e64] = 0x000b, [0x3e66] = 0x0009,
       [0x5f4c] = 0x000b, [0x5f4e] = 0x0009,
       [0x613c] = 0x000b, [0x613e] = 0x0009,
+      [0x61a0] = 0x000b, [0x61a2] = 0x0009,
       [0x6644] = 0x000b, [0x6646] = 0x0009,
       [0x66d0] = 0x000b, [0x66d2] = 0x0009,
       [0x6a48] = 0x000b, [0x6a4a] = 0x0009,
@@ -1261,9 +1263,21 @@ StageResult stage_execute(Emulator* e) {
       regs[REGISTER_PR] = e->state.pc;
       goto bra;
 
+    /* cmp/eq rm, rn */
+    case CMPEQ_RM_RN:
+      set_sr_t_if(e, regs[instr.n] == regs[instr.m]);
+      print_registers(e, 3, instr.m, instr.n, REGISTER_T);
+      break;
+
     /* cmp/ge rm, rn */
     case CMPGE_RM_RN:
       set_sr_t_if(e, (s32)regs[instr.n] >= (s32)regs[instr.m]);
+      print_registers(e, 3, instr.m, instr.n, REGISTER_T);
+      break;
+
+    /* cmp/gt rm, rn */
+    case CMPGT_RM_RN:
+      set_sr_t_if(e, (s32)regs[instr.n] > (s32)regs[instr.m]);
       print_registers(e, 3, instr.m, instr.n, REGISTER_T);
       break;
 
@@ -1301,6 +1315,13 @@ StageResult stage_execute(Emulator* e) {
     case EXTUW_RM_RN:
       regs[instr.n] = regs[instr.m] & 0xffff;
       print_registers(e, 2, instr.m, instr.n);
+      break;
+
+    /* jmp @rm */
+    case JMP_ARM:
+      e->state.pc = regs[instr.m];
+      result = STAGE_RESULT_STALL;
+      print_registers(e, 1, REGISTER_PC);
       break;
 
     /* jsr @rm */
@@ -1378,6 +1399,12 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 2, instr.m, instr.n);
       break;
 
+    /* mov.b @rm, rn */
+    case MOVB_ARM_RN:
+      *ma = stage_ma_read_u8_wb(e, regs[instr.m], instr.n);
+      print_registers(e, 1, instr.m);
+      break;
+
     /* mov.w @rm, rn */
     case MOVW_ARM_RN:
       *ma = stage_ma_read_u16_wb(e, regs[instr.m], instr.n);
@@ -1415,6 +1442,14 @@ StageResult stage_execute(Emulator* e) {
       regs[instr.m] += 4;
       print_registers(e, 1, instr.m);
       break;
+
+    /* mov.b rm, @(r0, rn) */
+    case MOVB_RM_A_R0_RN: {
+      u32 addr = regs[0] + regs[instr.n];
+      *ma = stage_ma_write_u8(e, addr, instr.m);
+      print_registers(e, 2, instr.m, REGISTER_ADDR, addr);
+      break;
+    }
 
     /* mov.l rm, @(r0, rn) */
     case MOVL_RM_A_R0_RN: {
@@ -1493,6 +1528,12 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, 0);
       break;
 
+    /* movt rn */
+    case MOVT_RN:
+      regs[instr.n] = regs[REGISTER_SR] & SR_T;
+      print_registers(e, 1, instr.n);
+      break;
+
     /* nop */
     case NOP:
       break;
@@ -1550,6 +1591,37 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, instr.n);
       break;
 
+    /* shll8 rn */
+    case SHLL8_RN:
+      regs[instr.n] <<= 8;
+      print_registers(e, 1, instr.n);
+      break;
+
+    /* shll16 rn */
+    case SHLL16_RN:
+      regs[instr.n] <<= 16;
+      print_registers(e, 1, instr.n);
+      break;
+
+    /* shlr rn */
+    case SHLR_RN:
+      set_sr_t_if(e, (regs[instr.n] & 1) != 0);
+      regs[instr.n] >>= 1;
+      print_registers(e, 2, instr.n, REGISTER_T);
+      break;
+
+    /* shlr2 rn */
+    case SHLR2_RN:
+      regs[instr.n] >>= 2;
+      print_registers(e, 1, instr.n);
+      break;
+
+    /* shlr8 rn */
+    case SHLR8_RN:
+      regs[instr.n] >>= 8;
+      print_registers(e, 1, instr.n);
+      break;
+
     /* stc sr, rn */
     case STC_SR_RN:
       regs[instr.n] = regs[REGISTER_SR];
@@ -1580,6 +1652,12 @@ StageResult stage_execute(Emulator* e) {
     case TST_RM_RN:
       set_sr_t_if(e, (regs[instr.n] & regs[instr.m]) == 0);
       print_registers(e, 3, instr.m, instr.n, REGISTER_T);
+      break;
+
+    /* tst imm, r0 */
+    case TST_I_R0:
+      set_sr_t_if(e, (instr.i & regs[0]) == 0);
+      print_registers(e, 2, 0, REGISTER_T);
       break;
 
     /* xtrct rm, rn */
@@ -1744,7 +1822,7 @@ int main(int argc, char** argv) {
 
   StageResult sr;
   int i;
-  for (i = 0; i < 1000000; ++i) {
+  for (i = 0; i < 1500000; ++i) {
     sr = step(e);
 
     if (sr == STAGE_RESULT_UNIMPLEMENTED) {
