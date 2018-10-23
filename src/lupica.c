@@ -335,7 +335,23 @@ typedef enum {
   MEMORY_ACCESS_WRITE_U8,
   MEMORY_ACCESS_WRITE_U16,
   MEMORY_ACCESS_WRITE_U32,
+  MEMORY_ACCESS_READ_MACL,
+  MEMORY_ACCESS_MULTIPLY,
 } MemoryAccessType;
+
+typedef enum {
+  MULTIPLIER_MULU,
+  MULTIPLIER_MACW,
+  MULTIPLIER_MACL,
+  MULTIPLIER_DMULSL,
+  MULTIPLIER_DMULUL,
+  MULTIPLIER_MULL,
+} MultiplierType;
+
+typedef struct {
+  MultiplierType type;
+  u32 rm, rn;
+} Multiplier;
 
 typedef enum {
   STAGE_RESULT_OK,
@@ -387,8 +403,14 @@ typedef struct {
     u16 v16;
     u32 v32;
     u32 wb_reg;
+    Multiplier mul;
   };
 } StageMA;
+
+typedef struct {
+  Stage s;
+  Multiplier mul;
+} StageMM;
 
 typedef struct {
   Stage s;
@@ -401,6 +423,7 @@ typedef struct {
   StageID id;
   StageEX ex;
   StageMA ma;
+  StageMM mm;
   StageWB wb;
 } Pipeline;
 
@@ -483,15 +506,18 @@ u16 read_u16_raw(Emulator* e, Address addr) {
       [0x668] = 0x000b,  [0x66a] = 0x0009,
       [0x69c] = 0x000b,  [0x69e] = 0x0009,
       [0x3e64] = 0x000b, [0x3e66] = 0x0009,
+      [0x437c] = 0x000b, [0x437e] = 0x0009,
       [0x5f4c] = 0x000b, [0x5f4e] = 0x0009,
       [0x613c] = 0x000b, [0x613e] = 0x0009,
       [0x61a0] = 0x000b, [0x61a2] = 0x0009,
       [0x6644] = 0x000b, [0x6646] = 0x0009,
       [0x66d0] = 0x000b, [0x66d2] = 0x0009,
+      [0x6a0e] = 0x000b, [0x6a10] = 0x0009,
       [0x6a48] = 0x000b, [0x6a4a] = 0x0009,
       [0x6a5a] = 0x000b, [0x6a5c] = 0x0009,
       [0x6ac0] = 0x000b, [0x6ac2] = 0x0009,
       [0x6b50] = 0x000b, [0x6b52] = 0x0009,
+      [0x7d96] = 0x000b, [0x7d98] = 0x0009,
   };
   // clang-format on
 
@@ -1293,10 +1319,22 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 3, instr.m, instr.n, REGISTER_T);
       break;
 
+    /* cmp/pz rn */
+    case CMPPZ_RN:
+      set_sr_t_if(e, (s32)regs[instr.n] >= 0);
+      print_registers(e, 2, instr.n, REGISTER_T);
+      break;
+
     /* cmp/eq imm, r0 */
     case CMPEQ_I_R0:
       set_sr_t_if(e, instr.i == regs[0]);
       print_registers(e, 2, 0, REGISTER_T);
+      break;
+
+    /* exts.b rm, rn */
+    case EXTSB_RM_RN:
+      regs[instr.n] = SIGN_EXTEND(regs[instr.m], 8);
+      print_registers(e, 2, instr.m, instr.n);
       break;
 
     /* exts.w rm, rn */
@@ -1365,6 +1403,14 @@ StageResult stage_execute(Emulator* e) {
           print_registers(e, 1, REGISTER_VBR);
           break;
       }
+      break;
+
+    /* lds.l @rm+, macl */
+    case LDSL_ARMP_MACL:
+      /* TODO(binji): handle multiplier contention. */
+      *ma = stage_ma_read_u32_wb(e, regs[instr.m], REGISTER_MACL);
+      regs[instr.m] += 4;
+      print_registers(e, 1, instr.m);
       break;
 
     /* lds.l @rm+, pr */
@@ -1534,6 +1580,16 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, instr.n);
       break;
 
+    /* mulu.w rm, rn */
+    case MULUW_RM_RN:
+      *ma = (StageMA){.s = ex->s,
+                      .type = MEMORY_ACCESS_MULTIPLY,
+                      .mul = {.type = MULTIPLIER_MULU,
+                              .rm = (u16)regs[instr.m],
+                              .rn = (u16)regs[instr.n]}};
+      print_registers(e, 2, instr.m, instr.n);
+      break;
+
     /* nop */
     case NOP:
       break;
@@ -1572,10 +1628,25 @@ StageResult stage_execute(Emulator* e) {
       break;
     }
 
+    /* rotl rn */
+    case ROTL_RN: {
+      set_sr_t_if(e, (regs[instr.n] & 0x80000000) != 0);
+      regs[instr.n] = (regs[instr.n] << 1) | (regs[instr.n] >> 31);
+      print_registers(e, 2, instr.n, REGISTER_T);
+      break;
+    }
+
     /* rts */
     case RTS:
       e->state.pc = regs[REGISTER_PR];
       print_registers(e, 1, REGISTER_PC);
+      break;
+
+    /* shar rn */
+    case SHAR_RN:
+      set_sr_t_if(e, (regs[instr.n] & 1) != 0);
+      regs[instr.n] = (u32)((s32)regs[instr.n] >> 1);
+      print_registers(e, 2, instr.n, REGISTER_T);
       break;
 
     /* shll rn */
@@ -1628,8 +1699,16 @@ StageResult stage_execute(Emulator* e) {
       print_registers(e, 1, instr.n);
       break;
 
+    /* sts macl, rn */
+    case STS_MACL_RN:
+      /* TODO(binji): handle multiplier contention. */
+      *ma = (StageMA){
+          .s = ex->s, .type = MEMORY_ACCESS_READ_MACL, .wb_reg = instr.n};
+      break;
+
     /* sts.l macl, @-rn */
     case STSL_MACL_AMRN:
+      /* TODO(binji): handle multiplier contention. */
       regs[instr.n] -= 4;
       *ma = stage_ma_write_u32(e, regs[instr.n], regs[REGISTER_MACL]);
       print_registers(e, 2, REGISTER_MACL, instr.n);
@@ -1640,6 +1719,12 @@ StageResult stage_execute(Emulator* e) {
       regs[instr.n] -= 4;
       *ma = stage_ma_write_u32(e, regs[instr.n], regs[REGISTER_PR]);
       print_registers(e, 2, REGISTER_PR, instr.n);
+      break;
+
+    /* sub rm, rn */
+    case SUB_RM_RN:
+      regs[instr.n] -= regs[instr.m];
+      print_registers(e, 2, instr.m, instr.n);
       break;
 
     /* swap.w rm, rn */
@@ -1689,6 +1774,7 @@ StageResult stage_memory_access(Emulator* e) {
   StageResult result = STAGE_RESULT_OK;
   StageEX* ex = &e->state.pipeline.ex;
   StageMA* ma = &e->state.pipeline.ma;
+  StageMM* mm = &e->state.pipeline.mm;
   StageWB* wb = &e->state.pipeline.wb;
 
   if (!ma->s.active) {
@@ -1740,6 +1826,21 @@ StageResult stage_memory_access(Emulator* e) {
     case MEMORY_ACCESS_WRITE_U8: MA_WRITE(8, 2); break;
     case MEMORY_ACCESS_WRITE_U16: MA_WRITE(16, 4); break;
     case MEMORY_ACCESS_WRITE_U32: MA_WRITE(32, 8); break;
+
+    case MEMORY_ACCESS_READ_MACL:
+      val = e->state.reg[REGISTER_MACL];
+      *wb = (StageWB){.s = ma->s, .reg = ma->wb_reg, .val = val};
+      if (e->verbosity > 1) {
+        printf("%12s => 0x%08x\n", "MACL", val);
+      }
+      break;
+
+    case MEMORY_ACCESS_MULTIPLY:
+      *mm = (StageMM){.s = ma->s, .mul = ma->mul};
+      if (e->verbosity > 1) {
+        printf("  (multiply)\n");
+      }
+      break;
   }
   // clang-format on
 
@@ -1759,6 +1860,59 @@ StageResult stage_memory_access(Emulator* e) {
   ma->s.active = false;
 
   return result;
+}
+
+
+StageResult stage_multiplier(Emulator* e) {
+  StageMM* mm = &e->state.pipeline.mm;
+
+  if (!mm->s.active) {
+    return STAGE_RESULT_OK;
+  }
+
+  if (e->verbosity > 1) {
+    print_stage(mm->s, "multiply");
+    printf("%*s", INSTR_COLUMNS, "");
+  }
+
+  static const int mul_steps[] = {
+    2, /* MULTIPLIER_MULUW */
+    2, /* MULTIPLIER_MULSW */
+    2, /* MULTIPLIER_MACW */
+    4, /* MULTIPLIER_MACL */
+    4, /* MULTIPLIER_DMULSL */
+    4, /* MULTIPLIER_DMULUL */
+    4, /* MULTIPLIER_MULL */
+  };
+
+  int steps = mul_steps[mm->mul.type];
+  if (++mm->s.step < steps) {
+    if (e->verbosity > 1) {
+      printf("; processing...");
+    }
+    mm->s.active = true;
+  } else {
+    u32* regs = &e->state.reg[0];
+
+    switch (mm->mul.type) {
+      case MULTIPLIER_MULU:
+        regs[REGISTER_MACL] = mm->mul.rm * mm->mul.rn;
+        print_registers(e, 1, REGISTER_MACL);
+        break;
+
+      default:
+        UNREACHABLE("unexpected multiplier type: %d", mm->mul.type);
+        break;
+    }
+
+    mm->s.active = false;
+  }
+
+  if (e->verbosity > 1) {
+    printf("\n");
+  }
+
+  return STAGE_RESULT_OK;
 }
 
 StageResult stage_writeback(Emulator* e) {
@@ -1787,6 +1941,7 @@ StageResult step(Emulator* e) {
     printf(YELLOW "--- step ---\n" WHITE);
   }
   stage_writeback(e);
+  stage_multiplier(e);
 
   if (stage_memory_access(e) == STAGE_RESULT_STALL) {
     return STAGE_RESULT_STALL;
